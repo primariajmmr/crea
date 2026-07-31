@@ -222,17 +222,17 @@
                     <p class="text-slate-500 text-sm mt-1" id="teacher-view-subtitle"></p>
                 </div>
                 <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2 w-full">
-                    <button onclick="navigate('eval-dash')" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
-                        <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 text-base"><i class="fa-solid fa-clipboard-check"></i></span>
-                        <span class="text-sm font-bold text-slate-900">Evaluación Escolar</span>
-                    </button>
                     <button onclick="navigate('student-history')" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
                         <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 text-base"><i class="fa-solid fa-user-graduate"></i></span>
                         <span class="text-sm font-bold text-slate-900">Vista Alumno/Grupo</span>
                     </button>
-                    <button onclick="openNewProjectConfig()" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
-                        <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 text-base"><i class="fa-solid fa-plus"></i></span>
-                        <span class="text-sm font-bold text-slate-900">Nuevo Proyecto</span>
+                    <button onclick="navigate('proyectos-escolares')" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
+                        <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 text-base"><i class="fa-solid fa-layer-group"></i></span>
+                        <span class="text-sm font-bold text-slate-900">Proyectos Escolares</span>
+                    </button>
+                    <button onclick="navigate('eval-dash')" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
+                        <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-blue-100 text-blue-700 text-base"><i class="fa-solid fa-clipboard-check"></i></span>
+                        <span class="text-sm font-bold text-slate-900">Evaluación Escolar</span>
                     </button>
                     <button onclick="openPhysicalEducation()" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
                         <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-amber-100 text-amber-700 text-base"><i class="fa-solid fa-dumbbell"></i></span>
@@ -244,23 +244,48 @@
                     </button>
                     <button onclick="window.open('https://siie.sepen.gob.mx/', '_blank', 'noopener,noreferrer')" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
                         <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 text-base"><i class="fa-solid fa-sitemap"></i></span>
-                        <span class="text-sm font-bold text-slate-900">Abrir SIIE</span>
+                        <span class="text-sm font-bold text-slate-900">SIIE</span>
                     </button>
                 </div>
             </div>
 
             <div id="teacher-summary-area" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-6"></div>
+            <div id="teacher-alerts-list" class="mb-6"></div>
 
-            <!-- Filtros de Dashboard de Proyectos -->
-            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex gap-4 items-center">
-                <span class="text-sm font-bold text-slate-600"><i class="fa-solid fa-filter"></i> Mostrar Periodo:</span>
-                <select id="filter-period-select" class="px-3 py-1.5 border rounded-lg bg-slate-50 outline-none font-medium" onchange="renderTeacherDashboard()">
-                    <option value="Todos">Todos los Periodos</option>
-                    <option value="Primer Periodo">Primer Periodo</option>
-                    <option value="Segundo Periodo">Segundo Periodo</option>
-                    <option value="Tercer Periodo">Tercer Periodo</option>
-                </select>
-                <button onclick="navigate('concentrado')" class="ml-auto px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-bold hover:bg-emerald-100 transition"><i class="fa-solid fa-chart-pie mr-1"></i> Ver Concentrados de Periodo</button>
+        </div>
+
+        <div id="view-proyectos-escolares" class="hidden fade-in w-full max-w-none mx-auto space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-layer-group text-indigo-500"></i> Proyectos Escolares</h2>
+                    <p class="text-slate-500 text-sm mt-1">Consulta y navega por los proyectos registrados en cada periodo del ciclo escolar.</p>
+                </div>
+                <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200"><i class="fa-solid fa-arrow-left mr-1"></i> Volver al Panel Docente</button>
+            </div>
+
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-4">
+                <div class="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+                    <div>
+                        <h3 class="text-xl font-bold text-slate-800">Explora por periodo</h3>
+                        <p class="text-slate-500 text-sm mt-1">Selecciona un periodo para ver los proyectos relacionados.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button onclick="openNewProjectConfig()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700 transition"><i class="fa-solid fa-plus mr-2"></i> Nuevo Proyecto</button>
+                        <button onclick="navigate('concentrado')" class="px-4 py-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-sm font-bold hover:bg-emerald-100 transition"><i class="fa-solid fa-chart-pie mr-1"></i> Ver Concentrados de Periodo</button>
+                    </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-3 pt-2">
+                    <div class="flex flex-wrap items-center gap-2" id="teacher-period-tabs">
+                        <span data-teacher-period-tab="Primer Periodo" role="button" tabindex="0" onclick="setTeacherDashboardPeriod('Primer Periodo')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setTeacherDashboardPeriod('Primer Periodo'); }" class="cursor-pointer text-sm font-semibold text-slate-600 hover:text-indigo-700 transition">Primer Periodo</span>
+                        <span data-teacher-period-tab="Segundo Periodo" role="button" tabindex="0" onclick="setTeacherDashboardPeriod('Segundo Periodo')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setTeacherDashboardPeriod('Segundo Periodo'); }" class="cursor-pointer text-sm font-semibold text-slate-600 hover:text-indigo-700 transition">Segundo Periodo</span>
+                        <span data-teacher-period-tab="Tercer Periodo" role="button" tabindex="0" onclick="setTeacherDashboardPeriod('Tercer Periodo')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setTeacherDashboardPeriod('Tercer Periodo'); }" class="cursor-pointer text-sm font-semibold text-slate-600 hover:text-indigo-700 transition">Tercer Periodo</span>
+                    </div>
+                    <select id="filter-period-select" class="hidden" onchange="renderTeacherDashboard()">
+                        <option value="Primer Periodo" selected>Primer Periodo</option>
+                        <option value="Segundo Periodo">Segundo Periodo</option>
+                        <option value="Tercer Periodo">Tercer Periodo</option>
+                    </select>
+                </div>
             </div>
 
             <div id="teacher-projects-list" class="space-y-6"></div>
@@ -273,7 +298,7 @@
                     <p class="text-slate-500 text-sm mt-1">Consulta el historial completo de un alumno y, al mismo tiempo, el avance general del grupo.</p>
                 </div>
                 <div class="flex gap-3">
-                    <button onclick="navigate('teacher')" class="px-4 py-2 bg-slate-100 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-200 transition">Volver a proyectos</button>
+                    <button onclick="navigate('teacher')" class="px-4 py-2 bg-slate-100 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-200 transition">Volver al Panel Docente</button>
                 </div>
             </div>
 
@@ -375,7 +400,7 @@
                         <option>Segundo Periodo</option>
                         <option>Tercer Periodo</option>
                     </select>
-                    <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200">Volver a Proyectos</button>
+                    <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200">Volver al Panel Docente</button>
                 </div>
             </div>
             <div id="pe-table-area" class="bg-white border border-slate-200 rounded-2xl shadow-sm table-container flex-1"></div>
@@ -395,7 +420,7 @@
                         <option>Tercer Periodo</option>
                     </select>
                     <button onclick="exportLectoescrituraPDF()" class="px-4 py-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-sm font-bold hover:bg-rose-100 transition"><i class="fa-solid fa-file-pdf mr-1"></i> Reporte PDF</button>
-                    <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200">Volver a Proyectos</button>
+                    <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200">Volver al Panel Docente</button>
                 </div>
             </div>
             <div id="lecto-content-area" class="bg-white border border-slate-200 rounded-2xl shadow-sm flex-1 overflow-auto p-6 bg-slate-50"></div>
@@ -450,7 +475,7 @@
                     <button onclick="exportConcentradoPDF()" class="px-3 py-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-sm font-bold hover:bg-rose-100 transition" title="Exportar PDF"><i class="fa-solid fa-file-pdf"></i></button>
                     <button onclick="exportConcentradoExcel()" class="px-3 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm font-bold hover:bg-emerald-100 transition" title="Exportar Excel"><i class="fa-solid fa-file-excel"></i></button>
                     <button onclick="openIndividualReports()" class="px-4 py-2.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-sm font-bold hover:bg-indigo-100 transition"><i class="fa-solid fa-user-graduate mr-1"></i> Reportes Individuales</button>
-                    <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200">Volver a Proyectos</button>
+                    <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200">Volver al Panel Docente</button>
                 </div>
             </div>
             <div class="flex-1 overflow-auto space-y-8 pb-10" id="concentrado-render-area">
@@ -464,7 +489,7 @@
                     <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-clipboard-check text-blue-500"></i> Evaluación Escolar</h2>
                     <p class="text-slate-500 text-sm mt-1" id="eval-dash-subtitle"></p>
                 </div>
-                <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200"><i class="fa-solid fa-arrow-left mr-1"></i> Volver a proyectos</button>
+                <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200"><i class="fa-solid fa-arrow-left mr-1"></i> Volver al Panel Docente</button>
             </div>
             
             <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-4">
@@ -872,6 +897,59 @@
             else el.className = 'text-[10px] text-slate-400';
         }
 
+        function isPlainObject(value) {
+            return !!value && typeof value === 'object' && !Array.isArray(value);
+        }
+
+        function ensureDbMeta() {
+            if (!isPlainObject(db.meta)) db.meta = {};
+            if (typeof db.meta.revision !== 'number') db.meta.revision = 0;
+            if (!db.meta.updatedAt) db.meta.updatedAt = new Date().toISOString();
+            return db.meta;
+        }
+
+        function bumpDbRevision() {
+            const meta = ensureDbMeta();
+            meta.revision = (meta.revision || 0) + 1;
+            meta.updatedAt = new Date().toISOString();
+            return meta.revision;
+        }
+
+        function mergeDbPayload(remotePayload, localPayload) {
+            const remote = remotePayload && typeof remotePayload === 'object' ? JSON.parse(JSON.stringify(remotePayload)) : {};
+            const local = localPayload && typeof localPayload === 'object' ? JSON.parse(JSON.stringify(localPayload)) : {};
+            const remoteRevision = Number(remote?.meta?.revision) || 0;
+            const localRevision = Number(local?.meta?.revision) || 0;
+            const useLocal = localRevision >= remoteRevision;
+            const base = useLocal ? local : remote;
+            const merged = JSON.parse(JSON.stringify(base));
+
+            if (!isPlainObject(merged.meta)) merged.meta = {};
+            if (useLocal) {
+                merged.meta.revision = Math.max(remoteRevision, localRevision);
+                merged.meta.updatedAt = local?.meta?.updatedAt || remote?.meta?.updatedAt || new Date().toISOString();
+            } else {
+                merged.meta.revision = Math.max(remoteRevision, localRevision);
+                merged.meta.updatedAt = remote?.meta?.updatedAt || local?.meta?.updatedAt || new Date().toISOString();
+            }
+
+            const keys = new Set([...Object.keys(remote || {}), ...Object.keys(local || {})]);
+            keys.forEach((key) => {
+                if (key === 'meta') return;
+                const remoteValue = remote[key];
+                const localValue = local[key];
+                if (useLocal) {
+                    if (localValue !== undefined) merged[key] = localValue;
+                    else if (remoteValue !== undefined) merged[key] = remoteValue;
+                } else {
+                    if (remoteValue !== undefined) merged[key] = remoteValue;
+                    else if (localValue !== undefined) merged[key] = localValue;
+                }
+            });
+
+            return merged;
+        }
+
         function setupFirebaseStatusListener() {
             window.addEventListener('firebase-status', (ev) => {
                 const detail = ev.detail || {};
@@ -895,9 +973,16 @@
                 savePending = false;
                 try {
                     setFirebaseStatusLabel('Firebase: guardando...', 'neutral');
-                    await window.firebaseBridge.saveAppData(db);
+                    const remotePayload = await window.firebaseBridge.loadAppData().catch(() => null);
+                    const payloadToSave = mergeDbPayload(remotePayload, db);
+                    payloadToSave.meta = payloadToSave.meta || {};
+                    payloadToSave.meta.revision = Math.max(Number(payloadToSave.meta.revision) || 0, Number(db?.meta?.revision) || 0);
+                    payloadToSave.meta.updatedAt = db?.meta?.updatedAt || payloadToSave.meta.updatedAt || new Date().toISOString();
+                    await window.firebaseBridge.saveAppData(payloadToSave);
+                    db = payloadToSave;
                 } catch (err) {
-                    // El estado visible ya se actualiza desde el bridge.
+                    console.warn('Fallo al guardar en Firebase:', err);
+                    setFirebaseStatusLabel('Firebase: guardado local pendiente', 'neutral');
                 }
             } while (savePending);
             saveInFlight = false;
@@ -909,16 +994,21 @@
             setupFirebaseStatusListener();
             setFirebaseStatusLabel('Firebase: conectando...', 'neutral');
 
+            let remoteData = null;
+
             try {
                 if (window.firebaseBridge && typeof window.firebaseBridge.waitUntilReady === 'function') {
                     await window.firebaseBridge.waitUntilReady();
                 }
                 if (window.firebaseBridge && typeof window.firebaseBridge.loadAppData === 'function') {
-                    const remoteData = await window.firebaseBridge.loadAppData();
-                    if (remoteData && typeof remoteData === 'object') db = remoteData;
+                    remoteData = await window.firebaseBridge.loadAppData();
                 }
             } catch (err) {
-                appAlert('No fue posible leer datos de Firebase. Revise la conexión.');
+                console.warn('No fue posible leer datos de Firebase.', err);
+            }
+
+            if (remoteData && typeof remoteData === 'object') {
+                db = mergeDbPayload(remoteData, db);
             }
 
             // Inicializar esquemas nuevos si es la primera vez en V5
@@ -940,13 +1030,13 @@
             
             db.teachers.forEach(t => { if(!t.cycle) t.cycle = db.activeCycle; });
             
-            saveDb();
             document.getElementById('header-school-name').innerHTML = '<span class="block text-[11px] md:text-base font-black tracking-[0.14em] uppercase text-slate-700">CONTROL Y REGISTRO</span><span class="block text-[11px] md:text-base font-black tracking-[0.14em] uppercase text-slate-700 mt-0.5">DE EVALUACIONES Y AVANCES</span>';
             navigate('menu');
         }
 
         function saveDb() {
             document.getElementById('header-school-name').innerHTML = '<span class="block text-[11px] md:text-base font-black tracking-[0.14em] uppercase text-slate-700">CONTROL Y REGISTRO</span><span class="block text-[11px] md:text-base font-black tracking-[0.14em] uppercase text-slate-700 mt-0.5">DE EVALUACIONES Y AVANCES</span>';
+            bumpDbRevision();
             persistDbToFirebase();
         }
 
@@ -976,6 +1066,7 @@
             // Renderizados específicos
             if (viewId === 'admin') renderAdmin();
             if (viewId === 'teacher') renderTeacherDashboard();
+            if (viewId === 'proyectos-escolares') renderTeacherDashboard();
             if (viewId === 'student-history') renderStudentHistoryView();
             if (viewId === 'educ-fisica') renderPhysicalEducation();
             if (viewId === 'lectoescritura') renderLectoescritura();
@@ -1195,8 +1286,39 @@
         }
 
         function getTeacherName(id) {
-            let u = db.users.find(u => u.id === id);
-            return u ? `${u.username} (${u.group || 'Sin grupo'})` : 'Desconocido';
+            let u = db.users.find(u => u.id === id) || db.teachers.find(t => t.id === id);
+            return u ? `${u.username || u.name || 'Docente'} (${u.group || 'Sin grupo'})` : 'Desconocido';
+        }
+
+        function getActiveTeacherRecord() {
+            const fallbackTeacher = db.teachers.find(t => t.id === session.teacherId)
+                || db.teachers.find(t => t.username === session.username)
+                || db.teachers.find(t => t.name === session.username);
+            if (fallbackTeacher) return fallbackTeacher;
+
+            const fallbackUser = db.users.find(u => u.id === session.teacherId)
+                || db.users.find(u => u.username === session.username);
+            return fallbackUser ? {
+                id: fallbackUser.id,
+                name: fallbackUser.username || fallbackUser.name || 'Docente',
+                group: fallbackUser.group || 'Sin asignar',
+                cycle: fallbackUser.cycle || db.activeCycle || '2025-2026',
+                username: fallbackUser.username,
+                students: []
+            } : { name: session.username || 'Docente', group: session.group || 'Sin asignar', cycle: session.cycle || db.activeCycle || '2025-2026', students: [] };
+        }
+
+        function getTeacherProjectsForSession() {
+            const teacherId = session.teacherId;
+            const username = session.username;
+            const teacherName = session.username;
+            return db.projects.filter(p => {
+                if (p.teacherId === teacherId) return true;
+                if (p.teacherUsername && p.teacherUsername === username) return true;
+                if (p.teacherName && p.teacherName === teacherName) return true;
+                if (teacherId && p.teacherId && String(p.teacherId) === String(teacherId)) return true;
+                return false;
+            });
         }
 
         function changeAdminPassword() {
@@ -1281,12 +1403,12 @@
         // --- STREAMING_CHUNK:Admin Logics ---
         function getAdminSummaryData() {
             const activeTeachers = db.teachers.filter(t => t.cycle === db.activeCycle);
-            const activeProjects = db.projects.filter(p => activeTeachers.some(t => t.id === p.teacherId));
+            const activeProjects = db.projects.filter(p => activeTeachers.some(t => t.id === p.teacherId) || getTeacherProjectsForSession().some(tp => tp.id === p.id));
 
             const teachersWithoutStudents = activeTeachers.filter(t => !t.students || t.students.length === 0).length;
             const teachersWithoutCapture = activeTeachers.filter(t => {
                 if (!t.students || t.students.length === 0) return true;
-                const teacherProjects = db.projects.filter(p => p.teacherId === t.id);
+                const teacherProjects = db.projects.filter(p => p.teacherId === t.id || (p.teacherUsername && p.teacherUsername === t.username) || (p.teacherName && p.teacherName === t.name));
                 return teacherProjects.length === 0;
             }).length;
 
@@ -2366,7 +2488,7 @@
             const selectedOptionValue = currentValue === 'all' ? 'all' : selectedStudentId;
 
             select.innerHTML = teacher.students.length
-                ? `<option value="all" ${selectedOptionValue === 'all' ? 'selected' : ''}>TODOS EL GRUPO</option>` + teacher.students.map(stu => `<option value="${stu.id}" ${stu.id === selectedOptionValue ? 'selected' : ''}>${stu.paterno} ${stu.materno} ${stu.nombres}</option>`).join('')
+                ? `<option value="all" ${selectedOptionValue === 'all' ? 'selected' : ''}>TODO EL GRUPO</option>` + teacher.students.map(stu => `<option value="${stu.id}" ${stu.id === selectedOptionValue ? 'selected' : ''}>${stu.paterno} ${stu.materno} ${stu.nombres}</option>`).join('')
                 : '<option value="">Sin alumnos</option>';
 
             if (!selectedStudentId) {
@@ -2384,7 +2506,7 @@
             const latestAverage = latestSnapshot ? latestSnapshot.average : null;
             const latestLevel = latestAverage === null ? 'Sin dato' : getNivelLogro(latestAverage);
 
-            const teacherProjects = db.projects.filter(p => p.teacherId === teacher.id);
+            const teacherProjects = db.projects.filter(p => p.teacherId === teacher.id || (p.teacherUsername && p.teacherUsername === teacher.username) || (p.teacherName && p.teacherName === teacher.name));
             const studentProjects = teacherProjects.map(proj => {
                 const score = calcProjectFinalScore(proj, selectedStudentId);
                 return {
@@ -2547,7 +2669,12 @@
 
         function getTeacherSummaryData(teacher) {
             const teacherStudents = Array.isArray(teacher.students) ? teacher.students : [];
-            const teacherProjects = db.projects.filter(p => p.teacherId === teacher.id);
+            const teacherProjects = db.projects.filter(p => {
+                if (p.teacherId === teacher.id) return true;
+                if (p.teacherUsername && p.teacherUsername === session.username) return true;
+                if (p.teacherName && p.teacherName === teacher.name) return true;
+                return false;
+            });
             const periods = ['Diagnóstico', 'Primer Periodo', 'Segundo Periodo', 'Tercer Periodo'];
 
             const pendingPeriods = periods.filter(period => {
@@ -2578,18 +2705,23 @@
                     break;
                 }
             }
+            if (!referencePeriod && teacherProjects.length > 0) {
+                referencePeriod = teacherProjects[0]?.periodo || 'Primer Periodo';
+            }
 
             const alerts = [];
-            if (referencePeriod) {
-                teacherStudents.forEach(stu => {
-                    const stData = db.evalData?.[stu.id]?.[referencePeriod];
-                    const studentProjects = teacherProjects.filter(p => Object.prototype.hasOwnProperty.call((p.grades || {}), stu.id));
-                    const incompleteProjects = teacherProjects.filter(p => {
-                        const score = calcProjectFinalScore(p, stu.id);
-                        return score === null;
-                    });
+            teacherStudents.forEach(stu => {
+                const stData = referencePeriod ? db.evalData?.[stu.id]?.[referencePeriod] : null;
+                const studentProjects = teacherProjects.filter(p => Object.prototype.hasOwnProperty.call((p.grades || {}), stu.id));
+                const incompleteProjects = teacherProjects.filter(p => {
+                    const score = calcProjectFinalScore(p, stu.id);
+                    return score === null;
+                });
+                const pendingProjectRegisters = teacherProjects.filter(p => {
+                    return !Object.prototype.hasOwnProperty.call((p.grades || {}), stu.id);
+                });
 
-                    if (!stData) return;
+                if (stData) {
                     const grades = CAMPOS_FORMATIVOS.map(campo => {
                         const val = stData.campos?.[campo];
                         return val !== undefined && val !== null && val !== '' ? parseFloat(val) : null;
@@ -2606,27 +2738,27 @@
                             });
                         }
                     }
+                }
 
-                    if (incompleteProjects.length > 0) {
-                        alerts.push({
-                            student: stu,
-                            type: 'proyectos-pendientes',
-                            message: `Falta capturar ${incompleteProjects.length} proyecto(s):`,
-                            severity: 'medium',
-                            projects: incompleteProjects
-                        });
-                    }
+                if (pendingProjectRegisters.length > 0) {
+                    alerts.push({
+                        student: stu,
+                        type: 'proyectos-pendientes',
+                        message: `Faltan ${pendingProjectRegisters.length} proyecto(s) por registrar`,
+                        severity: 'medium',
+                        projects: pendingProjectRegisters
+                    });
+                }
 
-                    if (studentProjects.length === 0 && teacherProjects.length > 0 && incompleteProjects.length === 0) {
-                        alerts.push({
-                            student: stu,
-                            type: 'sin-proyectos',
-                            message: 'Sin proyectos capturados aún para este alumno',
-                            severity: 'medium'
-                        });
-                    }
-                });
-            }
+                if (studentProjects.length === 0 && teacherProjects.length > 0 && incompleteProjects.length === 0 && !pendingProjectRegisters.length) {
+                    alerts.push({
+                        student: stu,
+                        type: 'sin-proyectos',
+                        message: 'Sin proyectos capturados aún para este alumno',
+                        severity: 'medium'
+                    });
+                }
+            });
 
             return {
                 teacherStudents,
@@ -2638,14 +2770,42 @@
             };
         }
 
+        function setTeacherDashboardPeriod(period) {
+            const select = document.getElementById('filter-period-select');
+            if (!select) return;
+            select.value = period;
+            renderTeacherDashboard();
+        }
+
+        function toggleAlertDetails(index) {
+            const details = document.getElementById(`alert-details-${index}`);
+            if (!details) return;
+            details.classList.toggle('hidden');
+        }
+
+        function updateTeacherPeriodTabs() {
+            const select = document.getElementById('filter-period-select');
+            const activeValue = select && select.value ? select.value : 'Primer Periodo';
+            document.querySelectorAll('[data-teacher-period-tab]').forEach(tab => {
+                const isActive = tab.getAttribute('data-teacher-period-tab') === activeValue;
+                tab.className = `cursor-pointer text-sm font-semibold transition ${isActive ? 'text-indigo-700 border-b-2 border-indigo-600 pb-0.5' : 'text-slate-600 hover:text-indigo-700'}`;
+            });
+        }
+
         function renderTeacherDashboard() {
-            let teacher = db.teachers.find(t => t.id === session.teacherId) || db.teachers.find(t => t.username === session.username) || { name: session.username || 'Docente', group: session.group || 'Sin asignar', cycle: session.cycle || 'N/A' };
+            let teacher = getActiveTeacherRecord();
             document.getElementById('teacher-view-subtitle').textContent = `Docente: ${teacher.name} | Grupo: ${teacher.group} | Ciclo: ${teacher.cycle}`;
+            updateTeacherPeriodTabs();
             
             const summary = getTeacherSummaryData(teacher);
-            document.getElementById('teacher-summary-area').innerHTML = `
-                <div class="grid grid-cols-1 xl:grid-cols-[1.4fr_0.9fr] gap-4">
-                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            const summaryArea = document.getElementById('teacher-summary-area');
+            if (summaryArea) summaryArea.innerHTML = `
+                <div class="space-y-4">
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-lg font-black text-slate-800">Resumen Grupal | ${teacher.cycle || 'X°'}</h3>
+                    </div>
+                    <div class="grid grid-cols-1 xl:grid-cols-[1.4fr_0.9fr] gap-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
                         <div class="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
                             <div class="text-[11px] uppercase tracking-[0.2em] font-black text-indigo-700">Alumnos del grupo</div>
                             <div class="text-2xl font-black text-indigo-900 mt-1">${summary.teacherStudents.length}</div>
@@ -2667,14 +2827,12 @@
                             <div class="text-sm text-rose-700 mt-1">Promedios por debajo de 6.6</div>
                         </div>
                     </div>
+                    </div>
                 </div>`;
             
-            let filterPeriod = document.getElementById('filter-period-select').value;
-            let myProjects = db.projects.filter(p => p.teacherId === session.teacherId);
-            
-            if(filterPeriod !== 'Todos') {
-                myProjects = myProjects.filter(p => p.periodo === filterPeriod);
-            }
+            let filterPeriod = document.getElementById('filter-period-select').value || 'Primer Periodo';
+            let myProjects = getTeacherProjectsForSession();
+            myProjects = myProjects.filter(p => p.periodo === filterPeriod);
             
             let html = '';
             if(myProjects.length === 0) {
@@ -2732,16 +2890,9 @@
                     html += `</div>`;
                 });
             }
-            const alertCards = summary.alerts.slice(0, 6).map(alert => {
+            const alertCards = summary.alerts.slice(0, 6).map((alert, index) => {
                 const color = alert.type === 'bajo-rendimiento' ? 'rose' : 'amber';
-                return `
-                    <div class="rounded-2xl border border-${color}-200 bg-${color}-50 p-4">
-                        <div class="flex items-start justify-between gap-3">
-                            <div>
-                                <div class="text-[11px] uppercase tracking-[0.2em] font-black text-${color}-700">${alert.type === 'bajo-rendimiento' ? 'Atención' : 'Pendiente'}</div>
-                                <div class="font-black text-slate-800 mt-1">${alert.student.paterno} ${alert.student.materno} ${alert.student.nombres}</div>
-                                <div class="text-sm text-slate-600 mt-1">${alert.message}</div>
-                                ${alert.projects ? `<div class="text-xs text-slate-500 mt-3">${Object.entries(alert.projects.reduce((acc, proj) => {
+                const detailsHtml = alert.projects ? `<div class="text-xs text-slate-500 mt-3 hidden" id="alert-details-${index}">${Object.entries(alert.projects.reduce((acc, proj) => {
                                         acc[proj.periodo] = acc[proj.periodo] || {};
                                         acc[proj.periodo][proj.campo] = acc[proj.periodo][proj.campo] || [];
                                         acc[proj.periodo][proj.campo].push({ id: proj.id, nombre: proj.nombre });
@@ -2754,10 +2905,18 @@
                                                 ${proyectos.map(proyecto => `<div class="text-slate-500 pl-3">- <button type="button" onclick="openProjectAndFocus('${proyecto.id}')" class="text-indigo-700 font-semibold hover:text-indigo-900 underline decoration-dotted text-left" title="Abrir proyecto ${proyecto.nombre}">${proyecto.nombre}</button></div>`).join('')}
                                             `).join('')}
                                         </div>
-                                    `).join('')}</div>` : ''}
+                                    `).join('')}</div>` : '';
+                return `
+                    <div class="rounded-2xl border border-${color}-200 bg-${color}-50 p-4">
+                        <button type="button" onclick="toggleAlertDetails('${index}')" class="w-full text-left flex items-start justify-between gap-3">
+                            <div>
+                                <div class="text-[11px] uppercase tracking-[0.2em] font-black text-${color}-700">${alert.type === 'bajo-rendimiento' ? 'Atención' : 'Pendiente'}</div>
+                                <div class="font-black text-slate-800 mt-1">${alert.student.paterno} ${alert.student.materno} ${alert.student.nombres}</div>
+                                <div class="text-sm text-slate-600 mt-1">${alert.message}</div>
                             </div>
                             <i class="fa-solid ${alert.type === 'bajo-rendimiento' ? 'fa-triangle-exclamation' : 'fa-clock'} text-${color}-600"></i>
-                        </div>
+                        </button>
+                        ${detailsHtml}
                     </div>`;
             }).join('');
 
@@ -2775,7 +2934,11 @@
                     </div>
                 </div>`;
 
-            document.getElementById('teacher-projects-list').innerHTML = html + alertsHtml;
+            const alertsContainer = document.getElementById('teacher-alerts-list');
+            if (alertsContainer) alertsContainer.innerHTML = alertsHtml;
+
+            const projectsList = document.getElementById('teacher-projects-list');
+            if (projectsList) projectsList.innerHTML = html;
         }
 
         // --- STREAMING_CHUNK:Project Config & Setup ---
@@ -2950,9 +3113,12 @@
             });
             if (invalidExtra) return showValidationError(`El puntaje máximo de ${invalidExtra.nombre || 'un indicador extra'} debe estar entre 1 y 10.`);
 
+            const teacherRecord = getActiveTeacherRecord();
             let proj = {
                 id: existingProj ? existingProj.id : 'P'+Date.now(),
-                teacherId: existingProj ? existingProj.teacherId : session.teacherId,
+                teacherId: existingProj ? existingProj.teacherId : (session.teacherId || teacherRecord.id),
+                teacherUsername: existingProj ? existingProj.teacherUsername : (session.username || teacherRecord.username),
+                teacherName: existingProj ? existingProj.teacherName : (teacherRecord.name || session.username),
                 periodo,
                 campo,
                 nombre: nombre,
@@ -3009,7 +3175,10 @@
         function openProject(pid) {
             session.currentProjectId = pid;
             let proj = db.projects.find(p => p.id === pid);
-            let teacher = db.teachers.find(t => t.id === proj.teacherId);
+            let teacher = db.teachers.find(t => t.id === proj.teacherId)
+                || db.teachers.find(t => t.username === proj.teacherUsername || t.name === proj.teacherName)
+                || getActiveTeacherRecord();
+            if (!teacher.students) teacher.students = [];
             teacher.students = sortStudents(teacher.students); // Asegurar orden alfabetico
 
             document.getElementById('table-head-1').textContent = `${db.schoolName} - CCT: ${db.cct} - Ciclo: ${teacher.cycle}`;
@@ -4478,7 +4647,7 @@
             
             document.getElementById('conc-head-3').textContent = `Docente: ${teacher.name} | Grado: ${teacher.group} | Ciclo: ${teacher.cycle}`;
             
-            let myProjs = db.projects.filter(p => p.teacherId === teacher.id && p.periodo === selectedPeriod);
+            let myProjs = db.projects.filter(p => (p.teacherId === teacher.id || (p.teacherUsername && p.teacherUsername === teacher.username) || (p.teacherName && p.teacherName === teacher.name)) && p.periodo === selectedPeriod);
             let camposToRender = selectedCampo === 'Todos' ? CAMPOS_FORMATIVOS : [selectedCampo];
             
             let container = document.getElementById('concentrado-render-area');
@@ -5539,7 +5708,7 @@
 
                     let bodyData = [];
                     CAMPOS_FORMATIVOS.forEach(campo => {
-                        let teacherProjs = db.projects.filter(p => p.teacherId === session.teacherId && p.periodo === periodo && p.campo === campo);
+                        let teacherProjs = getTeacherProjectsForSession().filter(p => p.periodo === periodo && p.campo === campo);
                         let campoTotal = [];
 
                         teacherProjs.forEach(p => {
