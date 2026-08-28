@@ -363,11 +363,11 @@
                     <div class="grid grid-cols-2 gap-5">
                         <div>
                             <label class="text-xs font-semibold text-slate-600 block mb-1">Número de Indicadores</label>
-                            <input type="number" id="p-num-rub" min="1" value="1" class="w-full p-2 border rounded-lg outline-none focus:border-indigo-500">
+                            <input type="number" id="p-num-rub" min="0" value="1" class="w-full p-2 border rounded-lg outline-none focus:border-indigo-500">
                         </div>
                         <div>
                             <label class="text-xs font-semibold text-slate-600 block mb-1">Puntaje Máximo a Obtener</label>
-                            <input type="number" id="p-max-rub" min="1" value="10" class="w-full p-2 border rounded-lg outline-none focus:border-indigo-500">
+                            <input type="number" id="p-max-rub" min="0" value="1" class="w-full p-2 border rounded-lg outline-none focus:border-indigo-500">
                         </div>
                     </div>
                 </div>
@@ -699,6 +699,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
         import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -711,6 +712,7 @@
         };
 
         const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
         const firestore = getFirestore(app);
         const appStateRef = doc(firestore, 'app_state', 'main');
 
@@ -718,9 +720,22 @@
             window.dispatchEvent(new CustomEvent('firebase-status', { detail: { text, tone } }));
         };
 
+        const ensureFirebaseAuth = async () => {
+            try {
+                if (auth.currentUser) return auth.currentUser;
+                const result = await signInAnonymously(auth);
+                return result.user;
+            } catch (err) {
+                console.error('Firebase auth failed:', err);
+                emitStatus('Firebase: autenticación fallida', 'error');
+                throw err;
+            }
+        };
+
         const bridgeReady = (async () => {
             emitStatus('Firebase: conectando...', 'neutral');
             try {
+                await ensureFirebaseAuth();
                 await getDoc(appStateRef);
                 emitStatus('Firebase: conectado', 'ok');
             } catch (err) {
@@ -736,11 +751,12 @@
             waitUntilReady: () => bridgeReady,
             async loadAppData() {
                 try {
+                    await ensureFirebaseAuth();
                     const snap = await getDoc(appStateRef);
                     emitStatus('Firebase: conectado', 'ok');
                     if (!snap.exists()) return null;
                     const payload = snap.data() && snap.data().payload;
-                    return payload && typeof payload === 'object' ? payload : null;
+                    return payload && typeof payload === 'object' ? restoreFromFirestore(payload) : null;
                 } catch (err) {
                     console.error('Firebase load failed:', err);
                     emitStatus('Firebase: error de lectura', 'error');
@@ -749,7 +765,9 @@
             },
             async saveAppData(payload) {
                 try {
-                    await setDoc(appStateRef, { payload, updatedAt: serverTimestamp() }, { merge: true });
+                    await ensureFirebaseAuth();
+                    const safePayload = sanitizeForFirestore(payload);
+                    await setDoc(appStateRef, { payload: safePayload, updatedAt: serverTimestamp() }, { merge: true });
                     emitStatus('Firebase: conectado', 'ok');
                     return true;
                 } catch (err) {
@@ -764,7 +782,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = 'V15.7';
+        const APP_VERSION = 'V16.0';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -901,6 +919,47 @@
             return !!value && typeof value === 'object' && !Array.isArray(value);
         }
 
+        function sanitizeForFirestore(value) {
+            if (value === null || value === undefined) return value;
+            if (Array.isArray(value)) {
+                return value.map(item => {
+                    if (Array.isArray(item)) {
+                        return { __firestore_nested_array__: JSON.stringify(item) };
+                    }
+                    return sanitizeForFirestore(item);
+                });
+            }
+            if (value instanceof Date) return value.toISOString();
+            if (isPlainObject(value)) {
+                const clean = {};
+                Object.keys(value).forEach(key => {
+                    clean[key] = sanitizeForFirestore(value[key]);
+                });
+                return clean;
+            }
+            return value;
+        }
+
+        function restoreFromFirestore(value) {
+            if (value === null || value === undefined) return value;
+            if (Array.isArray(value)) return value.map(item => restoreFromFirestore(item));
+            if (isPlainObject(value)) {
+                if (Object.keys(value).length === 1 && Object.prototype.hasOwnProperty.call(value, '__firestore_nested_array__') && typeof value.__firestore_nested_array__ === 'string') {
+                    try {
+                        return JSON.parse(value.__firestore_nested_array__);
+                    } catch (err) {
+                        return value.__firestore_nested_array__;
+                    }
+                }
+                const restored = {};
+                Object.keys(value).forEach(key => {
+                    restored[key] = restoreFromFirestore(value[key]);
+                });
+                return restored;
+            }
+            return value;
+        }
+
         function ensureDbMeta() {
             if (!isPlainObject(db.meta)) db.meta = {};
             if (typeof db.meta.revision !== 'number') db.meta.revision = 0;
@@ -960,15 +1019,16 @@
         async function persistDbToFirebase() {
             if (!window.firebaseBridge || typeof window.firebaseBridge.saveAppData !== 'function') {
                 setFirebaseStatusLabel('Firebase: no inicializado', 'error');
-                return;
+                return false;
             }
 
             if (saveInFlight) {
                 savePending = true;
-                return;
+                return false;
             }
 
             saveInFlight = true;
+            let saved = false;
             do {
                 savePending = false;
                 try {
@@ -978,14 +1038,20 @@
                     payloadToSave.meta = payloadToSave.meta || {};
                     payloadToSave.meta.revision = Math.max(Number(payloadToSave.meta.revision) || 0, Number(db?.meta?.revision) || 0);
                     payloadToSave.meta.updatedAt = db?.meta?.updatedAt || payloadToSave.meta.updatedAt || new Date().toISOString();
-                    await window.firebaseBridge.saveAppData(payloadToSave);
-                    db = payloadToSave;
+                    const safePayload = sanitizeForFirestore(payloadToSave);
+                    await window.firebaseBridge.saveAppData(safePayload);
+                    db = restoreFromFirestore(safePayload);
+                    saved = true;
                 } catch (err) {
                     console.warn('Fallo al guardar en Firebase:', err);
-                    setFirebaseStatusLabel('Firebase: guardado local pendiente', 'neutral');
+                    setFirebaseStatusLabel('Firebase: error de guardado', 'error');
+                    try {
+                        appAlert('No se pudo guardar en Firebase. Revisa las reglas de Firestore y la conexión.');
+                    } catch (e) {}
                 }
             } while (savePending);
             saveInFlight = false;
+            return saved;
         }
 
         // --- INICIALIZACIÓN ---
@@ -1034,10 +1100,10 @@
             navigate('menu');
         }
 
-        function saveDb() {
+        async function saveDb() {
             document.getElementById('header-school-name').innerHTML = '<span class="block text-[11px] md:text-base font-black tracking-[0.14em] uppercase text-slate-700">CONTROL Y REGISTRO</span><span class="block text-[11px] md:text-base font-black tracking-[0.14em] uppercase text-slate-700 mt-0.5">DE EVALUACIONES Y AVANCES</span>';
             bumpDbRevision();
-            persistDbToFirebase();
+            return await persistDbToFirebase();
         }
 
         function updateDb(key, value) {
@@ -1364,7 +1430,13 @@
 
             const num = parseFloat(value);
             if (Number.isNaN(num)) return { valid: false, error: `${fieldName} debe ser numérica.` };
-            if (num < min || num > max) return { valid: false, error: `${fieldName} debe estar entre ${min} y ${max}.` };
+
+            const hasUpperLimit = Number.isFinite(max);
+            if (num < min || (hasUpperLimit && num > max)) {
+                const rangeMessage = hasUpperLimit ? `entre ${min} y ${max}` : `mayor o igual a ${min}`;
+                return { valid: false, error: `${fieldName} debe estar ${rangeMessage}.` };
+            }
+
             return { valid: true, value: num };
         }
 
@@ -1372,7 +1444,8 @@
             if (value === '' || value === null || value === undefined) return { valid: true, value: '' };
 
             if (category === 'rubs') {
-                return validateGradeValue(value, { max: proj.rubMax || 10, min: 0, allowEmpty: false, fieldName: 'La rúbrica' });
+                const rubricMax = Number(proj.rubMax) > 0 ? Number(proj.rubMax) : 10;
+                return validateGradeValue(value, { max: rubricMax, min: 0, allowEmpty: false, fieldName: 'La rúbrica' });
             }
 
             if (category === 'extra') {
@@ -3028,7 +3101,7 @@
             document.getElementById('p-num-pda').value = 1;
             document.getElementById('p-num-parc').value = 1;
             document.getElementById('p-num-rub').value = 1;
-            document.getElementById('p-max-rub').value = 10;
+            document.getElementById('p-max-rub').value = 1;
             renderExtraIndicatorsConfig([]);
         }
 
@@ -3043,10 +3116,10 @@
             document.getElementById('p-periodo').value = proj.periodo;
             document.getElementById('p-campo').value = proj.campo;
             document.getElementById('p-nombre').value = proj.nombre || '';
-            document.getElementById('p-num-pda').value = proj.pdaCount || 1;
-            document.getElementById('p-num-parc').value = proj.parcCount || 1;
-            document.getElementById('p-num-rub').value = proj.rubCount || 1;
-            document.getElementById('p-max-rub').value = proj.rubMax || 10;
+            document.getElementById('p-num-pda').value = proj.pdaCount > 0 ? proj.pdaCount : '';
+            document.getElementById('p-num-parc').value = proj.parcCount > 0 ? proj.parcCount : '';
+            document.getElementById('p-num-rub').value = Number.isFinite(Number(proj.rubCount)) ? Number(proj.rubCount) : 0;
+            document.getElementById('p-max-rub').value = Number.isFinite(Number(proj.rubMax)) ? Number(proj.rubMax) : 0;
             renderExtraIndicatorsConfig(getProjectExtraIndicators(proj));
         }
 
@@ -3077,7 +3150,6 @@
                     return Array.from({ length: item.count }, (_, idx) => (source || [])[idx] ?? '');
                 });
                 delete gradeSet.otros;
-                gradeSet.examVal = gradeSet.examVal ?? '';
                 proj.grades[stuId] = gradeSet;
             });
             delete proj.hasOtro;
@@ -3098,20 +3170,25 @@
             const duplicateProject = db.projects.some(p => p.id !== editingId && p.teacherId === (existingProj ? existingProj.teacherId : session.teacherId) && p.periodo === periodo && p.campo === campo && p.nombre.trim().toLowerCase() === nombre.toLowerCase());
             if (duplicateProject) return showValidationError('Ya existe un proyecto con ese nombre para el mismo periodo y campo.');
 
-            const pdaCount = parseInt(document.getElementById('p-num-pda').value, 10) || 1;
-            const parcCount = parseInt(document.getElementById('p-num-parc').value, 10) || 1;
-            const rubCount = parseInt(document.getElementById('p-num-rub').value, 10) || 1;
-            if (pdaCount < 1 || parcCount < 1 || rubCount < 1) return showValidationError('La cantidad de PDA, productos parciales y rúbricas debe ser mayor a cero.');
+            const rawPda = document.getElementById('p-num-pda').value;
+            const rawParc = document.getElementById('p-num-parc').value;
+            const rawRubCount = document.getElementById('p-num-rub').value;
+            const rawRubMax = document.getElementById('p-max-rub').value;
+            const pdaCount = rawPda === '' ? 0 : (parseInt(rawPda, 10) || 0);
+            const parcCount = rawParc === '' ? 0 : (parseInt(rawParc, 10) || 0);
+            const rubCount = rawRubCount === '' ? 0 : (parseInt(rawRubCount, 10) || 0);
+            if (pdaCount < 0 || parcCount < 0 || rubCount < 0) return showValidationError('La cantidad de rúbricas no puede ser negativa. PDA y productos parciales pueden quedar en blanco.');
 
-            const rubMaxValidation = validateGradeValue(document.getElementById('p-max-rub').value, { max: 10, min: 1, allowEmpty: false, fieldName: 'El puntaje máximo de rúbrica' });
+            const rubMaxValidation = validateGradeValue(rawRubMax, { max: null, min: 0, allowEmpty: false, fieldName: 'El puntaje máximo de rúbrica' });
             if (!rubMaxValidation.valid) return showValidationError(rubMaxValidation.error);
+            const rubMaxValue = Number(rubMaxValidation.value) || 0;
 
             const extraIndicators = readExtraIndicatorsFromForm();
             const invalidExtra = extraIndicators.find(item => {
-                const check = validateGradeValue(item.max, { max: 10, min: 1, allowEmpty: false, fieldName: `El puntaje máximo de ${item.nombre || 'un indicador extra'}` });
+                const check = validateGradeValue(item.max, { max: null, min: 1, allowEmpty: false, fieldName: `El puntaje máximo de ${item.nombre || 'un indicador extra'}` });
                 return !check.valid;
             });
-            if (invalidExtra) return showValidationError(`El puntaje máximo de ${invalidExtra.nombre || 'un indicador extra'} debe estar entre 1 y 10.`);
+            if (invalidExtra) return showValidationError(`El puntaje máximo de ${invalidExtra.nombre || 'un indicador extra'} debe ser mayor o igual a 1.`);
 
             const teacherRecord = getActiveTeacherRecord();
             let proj = {
@@ -3125,9 +3202,8 @@
                 pdaCount,
                 parcCount,
                 rubCount,
-                rubMax: rubMaxValidation.value,
+                rubMax: rubMaxValue,
                 extraIndicators,
-                examGlobalAct: existingProj ? !!existingProj.examGlobalAct : false,
                 grades: existingProj ? (existingProj.grades || {}) : {} // { studentId: { pdas:[], parcs:[], rubs:[], otros:[] } }
             };
 
@@ -3192,36 +3268,44 @@
         function renderTable(proj, teacher) {
             let html = `<table class="eval-table w-full border-collapse" id="main-project-table"><thead><tr>`;
             const extraIndicators = getProjectExtraIndicators(proj);
+            const hasPda = Number(proj.pdaCount || 0) > 0;
+            const hasParc = Number(proj.parcCount || 0) > 0;
+            const hasRubric = Number(proj.rubCount || 0) > 0 && Number(proj.rubMax || 0) > 0;
+            const showRubric = hasRubric;
             
             // Fila 1 (Headers Principales)
             html += `<th rowspan="2" class="sticky-col-1">No.</th><th rowspan="2" class="sticky-col-2">Alumno</th>`;
-            html += `<th colspan="${proj.pdaCount + 1}" class="bg-blue-50 border-blue-200 text-blue-900">PDA</th>`;
-            html += `<th colspan="${proj.parcCount + 1}" class="bg-emerald-50 border-emerald-200 text-emerald-900">Productos Parciales</th>`;
-            html += `<th colspan="${proj.rubCount + 2}" class="bg-amber-50 border-amber-200 text-amber-900">Rúbrica Prod. Final (Máx ${proj.rubMax})</th>`;
+            if (hasPda) html += `<th colspan="${proj.pdaCount + 1}" class="bg-blue-50 border-blue-200 text-blue-900">PDA</th>`;
+            if (hasParc) html += `<th colspan="${proj.parcCount + 1}" class="bg-emerald-50 border-emerald-200 text-emerald-900">Productos Parciales</th>`;
+            if (showRubric) html += `<th colspan="${proj.rubCount + 2}" class="bg-amber-50 border-amber-200 text-amber-900">Rúbrica Prod. Final (Máx ${proj.rubMax})</th>`;
             extraIndicators.forEach((item, index) => {
                 html += `<th colspan="${item.count + 2}" class="bg-purple-50 border-purple-200 text-purple-900">${item.nombre} (Máx ${item.max})</th>`;
             });
-            html += `<th class="bg-rose-50 border-rose-200 text-rose-900">Examen <br><input type="checkbox" id="global-exam-chk" class="mt-1" onchange="toggleGlobalExam(this.checked)" ${proj.examGlobalAct ? 'checked' : ''}></th>`;
             html += `<th rowspan="2" class="bg-slate-100 border-l-4 border-slate-300">EVALUACIÓN DEL PROYECTO</th>`;
             html += `<th rowspan="2" class="bg-slate-100">NIVEL DE LOGRO</th>`;
             html += `</tr><tr>`;
 
             // Fila 2 (Sub-columnas)
-            for(let i=1; i<=proj.pdaCount; i++) html += `<th class="bg-blue-50 font-medium text-xs border-blue-200 text-blue-800 px-1">PDA ${i}</th>`;
-            html += `<th class="bg-blue-100 border-blue-300 text-blue-900">Total PDA</th>`;
+            if (hasPda) {
+                for(let i=1; i<=proj.pdaCount; i++) html += `<th class="bg-blue-50 font-medium text-xs border-blue-200 text-blue-800 px-1">PDA ${i}</th>`;
+                html += `<th class="bg-blue-100 border-blue-300 text-blue-900">Total PDA</th>`;
+            }
             
-            for(let i=1; i<=proj.parcCount; i++) html += `<th class="bg-emerald-50 font-medium text-xs border-emerald-200 text-emerald-800 px-1">P.P. ${i}</th>`;
-            html += `<th class="bg-emerald-100 border-emerald-300 text-emerald-900">Total P.P.</th>`;
+            if (hasParc) {
+                for(let i=1; i<=proj.parcCount; i++) html += `<th class="bg-emerald-50 font-medium text-xs border-emerald-200 text-emerald-800 px-1">P.P. ${i}</th>`;
+                html += `<th class="bg-emerald-100 border-emerald-300 text-emerald-900">Total P.P.</th>`;
+            }
 
-            for(let i=1; i<=proj.rubCount; i++) html += `<th class="bg-amber-50 font-medium text-xs border-amber-200 text-amber-800 px-1">Ind. ${i}</th>`;
-            html += `<th class="bg-amber-100 border-amber-300 text-amber-900 text-xs px-1">Puntaje Total</th><th class="bg-amber-200 border-amber-400 text-amber-900">Producto Final</th>`;
+            if (showRubric) {
+                for(let i=1; i<=proj.rubCount; i++) html += `<th class="bg-amber-50 font-medium text-xs border-amber-200 text-amber-800 px-1">Ind. ${i}</th>`;
+                html += `<th class="bg-amber-100 border-amber-300 text-amber-900 text-xs px-1">Puntaje Total</th><th class="bg-amber-200 border-amber-400 text-amber-900">Producto Final</th>`;
+            }
 
             extraIndicators.forEach(item => {
                 for(let i=1; i<=item.count; i++) html += `<th class="bg-purple-50 font-medium text-xs border-purple-200 text-purple-800 px-1">Ind. ${i}</th>`;
                 html += `<th class="bg-purple-100 border-purple-300 text-purple-900 text-xs px-1">Puntaje Total</th>`;
                 html += `<th class="bg-purple-200 border-purple-400 text-purple-900">Calificación</th>`;
             });
-            html += `<th class="bg-rose-50 font-medium text-xs border-rose-200 text-rose-800 px-1">Cal. Examen</th>`;
             html += `</tr></thead><tbody class="divide-y divide-slate-100">`;
 
             if(teacher.students.length === 0) {
@@ -3235,15 +3319,21 @@
                 html += `<td class="sticky-col-1 text-slate-400 font-medium">${idx+1}</td>`;
                 html += `<td class="sticky-col-2 font-semibold text-sm text-slate-700">${stu.paterno} ${stu.materno} ${stu.nombres}</td>`;
                 
-                for(let i=0; i<proj.pdaCount; i++){ html += `<td><input type="number" step="0.1" class="input-grade" value="${g.pdas[i]||''}" onblur="updateG('${stu.id}', 'pdas', ${i}, this.value, this)"></td>`; }
-                html += `<td class="readonly-cell text-blue-800" id="t-pda-${stu.id}">0.0</td>`;
+                if (proj.pdaCount > 0) {
+                    for(let i=0; i<proj.pdaCount; i++){ html += `<td><input type="number" step="0.1" class="input-grade" value="${g.pdas[i]||''}" onblur="updateG('${stu.id}', 'pdas', ${i}, this.value, this)"></td>`; }
+                    html += `<td class="readonly-cell text-blue-800" id="t-pda-${stu.id}">0.0</td>`;
+                }
 
-                for(let i=0; i<proj.parcCount; i++){ html += `<td><input type="number" step="0.1" class="input-grade" value="${g.parcs[i]||''}" onblur="updateG('${stu.id}', 'parcs', ${i}, this.value, this)"></td>`; }
-                html += `<td class="readonly-cell text-emerald-800" id="t-parc-${stu.id}">0.0</td>`;
+                if (proj.parcCount > 0) {
+                    for(let i=0; i<proj.parcCount; i++){ html += `<td><input type="number" step="0.1" class="input-grade" value="${g.parcs[i]||''}" onblur="updateG('${stu.id}', 'parcs', ${i}, this.value, this)"></td>`; }
+                    html += `<td class="readonly-cell text-emerald-800" id="t-parc-${stu.id}">0.0</td>`;
+                }
 
-                for(let i=0; i<proj.rubCount; i++){ html += `<td><input type="number" step="0.1" class="input-grade" value="${g.rubs[i]||''}" onblur="updateG('${stu.id}', 'rubs', ${i}, this.value, this)"></td>`; }
-                html += `<td class="readonly-cell text-xs bg-amber-50" id="t-rub-pts-${stu.id}">0</td>`;
-                html += `<td class="readonly-cell text-amber-900 bg-amber-100/50" id="t-rub-fin-${stu.id}">0.0</td>`;
+                if (showRubric) {
+                    for(let i=0; i<proj.rubCount; i++){ html += `<td><input type="number" step="0.1" class="input-grade" value="${g.rubs[i]||''}" onblur="updateG('${stu.id}', 'rubs', ${i}, this.value, this)"></td>`; }
+                    html += `<td class="readonly-cell text-xs bg-amber-50" id="t-rub-pts-${stu.id}">0</td>`;
+                    html += `<td class="readonly-cell text-amber-900 bg-amber-100/50" id="t-rub-fin-${stu.id}">0.0</td>`;
+                }
 
                 extraIndicators.forEach((item, extraIndex) => {
                     const extraValues = (g.extraIndicators && g.extraIndicators[extraIndex]) ? g.extraIndicators[extraIndex] : Array(item.count).fill('');
@@ -3253,9 +3343,6 @@
                     html += `<td class="readonly-cell text-xs bg-purple-50" id="t-extra-pts-${extraIndex}-${stu.id}">0</td>`;
                     html += `<td class="readonly-cell text-purple-900 bg-purple-100/50" id="t-extra-fin-${extraIndex}-${stu.id}">0.0</td>`;
                 });
-
-                // Examen Col
-                html += `<td><input type="number" step="0.1" class="input-grade ${proj.examGlobalAct ? '' : 'opacity-30 bg-slate-100 cursor-not-allowed'}" value="${g.examVal||''}" id="in-ex-${stu.id}" ${proj.examGlobalAct ? '' : 'disabled'} onblur="updateG('${stu.id}', 'examVal', null, this.value, this)"></td>`;
 
                 html += `<td class="readonly-cell text-lg border-l-4 border-slate-300 font-black text-slate-800" id="final-eval-${stu.id}">0.0</td>`;
                 html += `<td class="text-xs font-semibold" id="final-logro-${stu.id}">-</td>`;
@@ -3272,12 +3359,12 @@
         }
 
         function initStudentGrades(proj) {
+            const hasRubric = Number(proj.rubCount || 0) > 0 && Number(proj.rubMax || 0) > 0;
             return {
-                pdas: Array(proj.pdaCount).fill(''),
-                parcs: Array(proj.parcCount).fill(''),
-                rubs: Array(proj.rubCount).fill(''),
-                extraIndicators: getProjectExtraIndicators(proj).map(item => Array(item.count).fill('')),
-                examVal: ''
+                pdas: Array(Math.max(0, Number(proj.pdaCount || 0))).fill(''),
+                parcs: Array(Math.max(0, Number(proj.parcCount || 0))).fill(''),
+                rubs: Array(hasRubric ? Math.max(0, Number(proj.rubCount || 0)) : 0).fill(''),
+                extraIndicators: getProjectExtraIndicators(proj).map(item => Array(item.count).fill(''))
             };
         }
 
@@ -3298,22 +3385,6 @@
             recalcRow(stuId);
         }
 
-        function toggleGlobalExam(isActive) {
-            let proj = db.projects.find(p => p.id === session.currentProjectId);
-            proj.examGlobalAct = isActive;
-            saveDb();
-            
-            let teacher = db.teachers.find(t => t.id === session.teacherId);
-            teacher.students.forEach(stu => {
-                let inp = document.getElementById('in-ex-'+stu.id);
-                if(inp) {
-                    if(isActive) { inp.disabled = false; inp.classList.remove('opacity-30', 'bg-slate-100', 'cursor-not-allowed'); } 
-                    else { inp.disabled = true; inp.classList.add('opacity-30', 'bg-slate-100', 'cursor-not-allowed'); }
-                    recalcRow(stu.id);
-                }
-            });
-        }
-
         function updateG(stuId, category, index, val, inputEl = null) {
             let proj = db.projects.find(p => p.id === session.currentProjectId);
             if(!proj.grades[stuId]) proj.grades[stuId] = initStudentGrades(proj);
@@ -3324,7 +3395,6 @@
             }
             
             if(index !== null) proj.grades[stuId][category][index] = validation.value;
-            else proj.grades[stuId][category] = validation.value; // Examen
             
             saveDb();
             recalcRow(stuId);
@@ -3345,25 +3415,42 @@
 
         function recalcRow(stuId) {
             let proj = db.projects.find(p => p.id === session.currentProjectId);
+            if (!proj) return;
+            if (!proj.grades) proj.grades = {};
             let g = proj.grades[stuId] || initStudentGrades(proj);
+            if (!proj.grades[stuId]) proj.grades[stuId] = g;
             const extraIndicators = getProjectExtraIndicators(proj);
+            const hasRubric = Number(proj.rubCount || 0) > 0 && Number(proj.rubMax || 0) > 0;
 
-            let aPda = avgArr(g.pdas);
-            document.getElementById(`t-pda-${stuId}`).textContent = aPda !== null ? truncateToOne(aPda).toFixed(1) : '-';
+            const pdaCell = document.getElementById(`t-pda-${stuId}`);
+            const parcCell = document.getElementById(`t-parc-${stuId}`);
+            let aPda = proj.pdaCount > 0 ? avgArr(g.pdas) : null;
+            let aParc = proj.parcCount > 0 ? avgArr(g.parcs) : null;
 
-            let aParc = avgArr(g.parcs);
-            document.getElementById(`t-parc-${stuId}`).textContent = aParc !== null ? truncateToOne(aParc).toFixed(1) : '-';
+            if (proj.pdaCount > 0) {
+                if (pdaCell) pdaCell.textContent = aPda !== null ? truncateToOne(aPda).toFixed(1) : '-';
+            } else if (pdaCell) {
+                pdaCell.textContent = '-';
+            }
 
-            let rubNums = g.rubs.map(x=>parseFloat(x)).filter(x=>!isNaN(x));
+            if (proj.parcCount > 0) {
+                if (parcCell) parcCell.textContent = aParc !== null ? truncateToOne(aParc).toFixed(1) : '-';
+            } else if (parcCell) {
+                parcCell.textContent = '-';
+            }
+
+            let rubNums = hasRubric ? g.rubs.map(x=>parseFloat(x)).filter(x=>!isNaN(x)) : [];
             let rubSum = rubNums.reduce((a,b)=>a+b, 0);
-            document.getElementById(`t-rub-pts-${stuId}`).textContent = rubSum;
+            const rubPtsCell = document.getElementById(`t-rub-pts-${stuId}`);
+            const rubFinCell = document.getElementById(`t-rub-fin-${stuId}`);
+            if (rubPtsCell) rubPtsCell.textContent = hasRubric ? rubSum : '-';
             
             let rubFin = null;
-            if(rubNums.length > 0) { 
+            if(hasRubric && rubNums.length > 0) { 
                 rubFin = (rubSum / proj.rubMax) * 10;
                 if(rubFin > 10) rubFin = 10; 
             }
-            document.getElementById(`t-rub-fin-${stuId}`).textContent = rubFin !== null ? truncateToOne(rubFin).toFixed(1) : '-';
+            if (rubFinCell) rubFinCell.textContent = rubFin !== null ? truncateToOne(rubFin).toFixed(1) : '-';
 
             const extraGrades = extraIndicators.map((item, extraIndex) => {
                 const values = (g.extraIndicators && g.extraIndicators[extraIndex]) ? g.extraIndicators[extraIndex] : [];
@@ -3377,14 +3464,11 @@
                 return final;
             });
 
-            let valExam = proj.examGlobalAct && !isNaN(parseFloat(g.examVal)) ? parseFloat(g.examVal) : null;
-
             let toAvg = [];
             if(aPda !== null) toAvg.push(truncateToOne(aPda));
             if(aParc !== null) toAvg.push(truncateToOne(aParc));
             if(rubFin !== null) toAvg.push(truncateToOne(rubFin));
             extraGrades.forEach(val => { if(val !== null) toAvg.push(truncateToOne(val)); });
-            if(valExam !== null) toAvg.push(valExam); // Exam not truncated here
 
             let evFin = avgArr(toAvg);
             let evCell = document.getElementById(`final-eval-${stuId}`);
@@ -4740,12 +4824,13 @@
         }
 
         function calcProjectFinalScore(proj, stuId) {
+            if (!proj || !proj.grades) return null;
             let g = proj.grades[stuId];
             if(!g) return null;
             const extraIndicators = getProjectExtraIndicators(proj);
 
-            let aPda = avgArr(g.pdas);
-            let aParc = avgArr(g.parcs);
+            let aPda = proj.pdaCount > 0 ? avgArr(g.pdas) : null;
+            let aParc = proj.parcCount > 0 ? avgArr(g.parcs) : null;
             
             let rubNums = g.rubs.map(x=>parseFloat(x)).filter(x=>!isNaN(x));
             let rubFin = null;
@@ -4761,14 +4846,11 @@
                 let sum = nums.reduce((a,b)=>a+b,0);
                 return Math.min((sum / item.max) * 10, 10);
             });
-            let valExam = proj.examGlobalAct && !isNaN(parseFloat(g.examVal)) ? parseFloat(g.examVal) : null;
-
             let toAvg = [];
             if(aPda !== null) toAvg.push(truncateToOne(aPda));
             if(aParc !== null) toAvg.push(truncateToOne(aParc));
             if(rubFin !== null) toAvg.push(truncateToOne(rubFin));
             extraGrades.forEach(val => { if(val !== null) toAvg.push(truncateToOne(val)); });
-            if(valExam !== null) toAvg.push(valExam);
 
             return avgArr(toAvg);
         }
