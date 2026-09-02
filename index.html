@@ -830,6 +830,7 @@
         let studentManagementGroup = '';
         let studentManagementSearch = '';
         let studentImportMode = 'masiva';
+        let selectedStudents = new Set();
 
         // Etiquetas internas para barras/donas/pastel/lineas sin depender de plugins externos
         const chartInnerLabelsPlugin = {
@@ -1413,6 +1414,52 @@
             appAlert('Contraseña del administrador actualizada exitosamente');
         }
 
+        function normalizeTeacherComparable(value) {
+            return String(value ?? '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+        }
+
+        function syncTeacherRecords() {
+            const teacherMap = new Map();
+            (db.teachers || []).forEach(teacher => {
+                if (!teacher || !teacher.id) return;
+                teacherMap.set(String(teacher.id), teacher);
+            });
+
+            (db.users || []).forEach(user => {
+                if (!user || user.role !== 'teacher' || !user.id) return;
+                const teacher = teacherMap.get(String(user.id));
+                if (teacher) {
+                    if (!teacher.name && user.username) teacher.name = user.username;
+                    if (!teacher.group && user.group) teacher.group = user.group;
+                    if (!teacher.password && user.password) teacher.password = user.password;
+                    teacher.cycle = teacher.cycle || user.cycle || db.activeCycle;
+                    return;
+                }
+                teacherMap.set(String(user.id), {
+                    id: user.id,
+                    name: user.name || user.username || 'Docente',
+                    group: user.group || '',
+                    password: user.password || '',
+                    students: [],
+                    cycle: user.cycle || db.activeCycle
+                });
+            });
+
+            db.teachers = Array.from(teacherMap.values()).map(teacher => ({
+                id: teacher.id,
+                name: teacher.name || 'Docente',
+                group: teacher.group || '',
+                password: teacher.password || '',
+                students: Array.isArray(teacher.students) ? teacher.students : [],
+                cycle: teacher.cycle || db.activeCycle
+            }));
+        }
+
         function showValidationError(message) {
             appAlert(message);
         }
@@ -1657,11 +1704,12 @@
 
         function openStudentGroupModal() {
             const select = document.getElementById('student-group-select');
-            const groups = [...new Set(db.teachers.filter(t => t.cycle === db.activeCycle).map(t => t.group))].filter(Boolean);
+            let groups = [...new Set(db.teachers.filter(t => t.cycle === db.activeCycle).map(t => t.group))].filter(Boolean);
             if (groups.length === 0) {
                 appAlert('Primero registra al menos un docente con grupo para poder agregar alumnos.');
                 return;
             }
+            groups = sortGroups(groups);
             select.innerHTML = groups.map(group => `<option value="${group}">${group}</option>`).join('');
             setStudentImportMode('masiva');
             document.getElementById('modal-student-group').classList.remove('hidden');
@@ -1789,12 +1837,33 @@
             if (!usernameCheck.valid) return showValidationError(usernameCheck.error);
             if (!passCheck.valid) return showValidationError(passCheck.error);
 
-            const normalizedName = name.toLowerCase();
-            const normalizedGroup = group.toLowerCase();
-            const duplicateUser = db.users.some(u => u.id !== editingTeacherId && u.username === username && u.cycle === db.activeCycle);
-            const duplicateTeacher = db.teachers.some(t => t.id !== editingTeacherId && t.cycle === db.activeCycle && t.name.trim().toLowerCase() === normalizedName && t.group.trim().toLowerCase() === normalizedGroup);
+            const normalizedName = normalizeTeacherComparable(name);
+            const normalizedGroup = normalizeTeacherComparable(group);
+            const normalizedUsername = normalizeTeacherComparable(username);
 
-            if (duplicateUser || duplicateTeacher) return showValidationError('Ya existe un docente con ese nombre, grupo o usuario en el ciclo activo.');
+            syncTeacherRecords();
+
+            const duplicateUser = db.users.some(u => {
+                if (u.id === editingTeacherId || u.role !== 'teacher') return false;
+                if (u.cycle !== db.activeCycle) return false;
+                return normalizeTeacherComparable(u.username) === normalizedUsername;
+            });
+
+            const duplicateTeacherName = db.teachers.some(t => {
+                if (t.id === editingTeacherId) return false;
+                if (t.cycle !== db.activeCycle) return false;
+                return normalizeTeacherComparable(t.name) === normalizedName;
+            });
+
+            const duplicateTeacherGroup = db.teachers.some(t => {
+                if (t.id === editingTeacherId) return false;
+                if (t.cycle !== db.activeCycle) return false;
+                return normalizeTeacherComparable(t.group) === normalizedGroup;
+            });
+
+            if (duplicateUser) return showValidationError('Ya existe un usuario de docente con ese nombre de acceso en el ciclo activo.');
+            if (duplicateTeacherName) return showValidationError('Ya existe un docente registrado con ese nombre en el ciclo activo.');
+            if (duplicateTeacherGroup) return showValidationError('Ya existe un docente registrado en ese grupo del ciclo activo.');
 
             if (editingTeacherId) {
                 const teacher = db.teachers.find(t => t.id === editingTeacherId);
@@ -1879,8 +1948,18 @@
             document.getElementById('admin-teachers-list').innerHTML = html;
         }
 
+        function sortGroups(groups) {
+            return groups.sort((a, b) => {
+                const numA = parseInt(a.match(/\d+/)?.[0] || 0);
+                const numB = parseInt(b.match(/\d+/)?.[0] || 0);
+                if (numA !== numB) return numA - numB;
+                return a.localeCompare(b);
+            });
+        }
+
         function getStudentManagementGroups() {
-            return [...new Set(db.teachers.filter(t => t.cycle === db.activeCycle && t.group).map(t => t.group))];
+            const groups = [...new Set(db.teachers.filter(t => t.cycle === db.activeCycle && t.group).map(t => t.group))];
+            return sortGroups(groups);
         }
 
         function renderStudentManagementPanel() {
@@ -1912,19 +1991,39 @@
             if (filteredStudents.length === 0) {
                 studentsHtml = `<p class="text-sm text-slate-500 text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-300">No hay alumnos registrados en este grupo.</p>`;
             } else {
+                const allSelected = filteredStudents.every(s => selectedStudents.has(`${studentManagementGroup}|${s.id}`));
+                const someSelected = filteredStudents.some(s => selectedStudents.has(`${studentManagementGroup}|${s.id}`));
+                
                 studentsHtml = `
                     <div class="rounded-xl border border-slate-200 bg-white">
-                        <div class="px-4 py-4 border-b border-slate-200 bg-slate-50 text-sm font-bold text-slate-700">Listado de alumnos</div>
+                        <div class="px-4 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                            <div class="flex items-center gap-3">
+                                <input type="checkbox" id="select-all-students" ${allSelected ? 'checked' : ''} onchange="selectAllStudents()" class="w-4 h-4 rounded cursor-pointer">
+                                <label for="select-all-students" class="text-sm font-bold text-slate-700 cursor-pointer">Listado de alumnos (${selectedStudents.size > 0 ? selectedStudents.size + ' seleccionados' : 'Seleccionar todos'})</label>
+                            </div>
+                            ${selectedStudents.size > 0 ? `
+                                <div class="flex items-center gap-2">
+                                    <button onclick="clearStudentSelection()" class="px-3 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-200 rounded transition">Limpiar</button>
+                                    <button onclick="deleteSelectedStudents()" class="px-3 py-1 text-xs font-semibold text-white bg-rose-500 hover:bg-rose-600 rounded transition"><i class="fa-solid fa-trash-can mr-1"></i>Eliminar</button>
+                                </div>
+                            ` : ''}
+                        </div>
                         <div class="space-y-2 p-4">
-                            ${filteredStudents.map(student => `
-                                <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-800">
-                                    <div class="min-w-0 break-words">${student.paterno} ${student.materno} ${student.nombres}</div>
-                                    <div class="flex items-center gap-2 text-slate-500">
+                            ${filteredStudents.map(student => {
+                                const isSelected = selectedStudents.has(`${studentManagementGroup}|${student.id}`);
+                                return `
+                                <div class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 ${isSelected ? 'bg-blue-50 border-blue-300' : 'bg-slate-50'} px-3 py-3 text-sm text-slate-800">
+                                    <div class="flex items-center gap-3 flex-1 min-w-0">
+                                        <input type="checkbox" class="w-4 h-4 rounded cursor-pointer flex-shrink-0" ${isSelected ? 'checked' : ''} onchange="toggleStudentSelection('${student.id}')">
+                                        <div class="min-w-0 break-words">${student.paterno} ${student.materno} ${student.nombres}</div>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-slate-500 flex-shrink-0">
                                         <button data-edit-student="${teacher.id}|${student.id}" type="button" class="rounded-full p-2 hover:bg-slate-200 transition" title="Editar alumno"><i class="fa-solid fa-pen-to-square"></i></button>
                                         <button data-delete-student="${teacher.id}|${student.id}" type="button" class="rounded-full p-2 hover:bg-slate-200 transition text-rose-500" title="Eliminar alumno"><i class="fa-solid fa-trash-can"></i></button>
                                     </div>
                                 </div>
-                            `).join('')}
+                                `;
+                            }).join('')}
                         </div>
                     </div>
                 `;
@@ -2100,6 +2199,53 @@
             appConfirm('¿Eliminar este alumno?', () => {
                 let t = db.teachers.find(t => t.id === tid);
                 t.students = t.students.filter(s => s.id !== sid);
+                saveDb();
+                renderTeachersList();
+                renderStudentManagementPanel();
+            });
+        }
+
+        function toggleStudentSelection(studentId) {
+            const key = `${studentManagementGroup}|${studentId}`;
+            if (selectedStudents.has(key)) {
+                selectedStudents.delete(key);
+            } else {
+                selectedStudents.add(key);
+            }
+            renderStudentManagementPanel();
+        }
+
+        function selectAllStudents() {
+            const teacher = db.teachers.find(t => t.cycle === db.activeCycle && t.group === studentManagementGroup);
+            if (!teacher) return;
+            const students = teacher.students || [];
+            const query = studentManagementSearch.trim().toLowerCase();
+            const filteredStudents = query ? students.filter(s => (`${s.paterno} ${s.materno} ${s.nombres}`).toLowerCase().includes(query)) : students;
+            
+            filteredStudents.forEach(s => {
+                selectedStudents.add(`${studentManagementGroup}|${s.id}`);
+            });
+            renderStudentManagementPanel();
+        }
+
+        function clearStudentSelection() {
+            selectedStudents.clear();
+            renderStudentManagementPanel();
+        }
+
+        function deleteSelectedStudents() {
+            if (selectedStudents.size === 0) {
+                appAlert('Selecciona al menos un alumno para eliminar.');
+                return;
+            }
+            appConfirm(`¿Eliminar ${selectedStudents.size} alumno(s) seleccionado(s)?`, () => {
+                let t = db.teachers.find(t => t.cycle === db.activeCycle && t.group === studentManagementGroup);
+                if (!t) return;
+                const idsToDelete = Array.from(selectedStudents)
+                    .filter(k => k.startsWith(studentManagementGroup + '|'))
+                    .map(k => k.split('|')[1]);
+                t.students = t.students.filter(s => !idsToDelete.includes(s.id));
+                selectedStudents.clear();
                 saveDb();
                 renderTeachersList();
                 renderStudentManagementPanel();
