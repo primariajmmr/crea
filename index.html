@@ -221,6 +221,7 @@
                     <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-chalkboard-user text-indigo-500"></i> Panel Docente</h2>
                     <p class="text-slate-500 text-sm mt-1" id="teacher-view-subtitle"></p>
                 </div>
+                <button id="admin-return-button" onclick="navigate('admin')" class="hidden px-4 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl text-sm font-bold hover:bg-indigo-100 transition border border-indigo-200"><i class="fa-solid fa-arrow-left mr-1"></i> Volver a Administración</button>
                 <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2 w-full">
                     <button onclick="navigate('student-history')" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
                         <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 text-base"><i class="fa-solid fa-user-graduate"></i></span>
@@ -782,7 +783,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = 'V16.0';
+        const APP_VERSION = '16.2';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -1130,6 +1131,9 @@
                 if (userInfo) userInfo.classList.add('hidden');
             }
 
+            const adminReturnButton = document.getElementById('admin-return-button');
+            if (adminReturnButton) adminReturnButton.classList.toggle('hidden', session.role !== 'admin' || viewId !== 'teacher');
+
             // Renderizados específicos
             if (viewId === 'admin') renderAdmin();
             if (viewId === 'teacher') renderTeacherDashboard();
@@ -1350,6 +1354,27 @@
                 if(session.targetView === 'proyectos' || session.targetView === 'docente') navigate('teacher');
                 else if(session.targetView === 'eval') navigate('eval-dash');
             }
+        }
+
+        function openTeacherAsAdmin(teacherId) {
+            if (session.role !== 'admin' || !checkPermission('view_all_groups')) {
+                appAlert('Solo un administrador puede consultar la información completa de los docentes.');
+                return;
+            }
+
+            const teacher = db.teachers.find(t => t.id === teacherId && t.cycle === db.activeCycle);
+            const user = db.users.find(u => u.id === teacherId && u.role === 'teacher' && u.isActive === true);
+            if (!teacher || !user) {
+                appAlert('No se encontró el docente seleccionado en el ciclo activo.');
+                return;
+            }
+
+            session.teacherId = teacher.id;
+            session.username = user.username;
+            session.group = teacher.group || user.group || null;
+            session.cycle = teacher.cycle || user.cycle || db.activeCycle;
+            session.targetView = 'docente';
+            navigate('teacher');
         }
 
         function getTeacherName(id) {
@@ -1927,6 +1952,7 @@
                                 </div>
                             </div>
                             <div class="flex gap-2">
+                                <button onclick="openTeacherAsAdmin('${t.id}')" class="text-emerald-600 hover:text-emerald-800 transition" title="Ver información completa del docente"><i class="fa-solid fa-eye"></i></button>
                                 <button onclick="openTeacherModal('${t.id}')" class="text-indigo-500 hover:text-indigo-700 transition" title="Editar Docente"><i class="fa-solid fa-pen-to-square"></i></button>
                                 <button onclick="deleteTeacher('${t.id}')" class="text-rose-400 hover:text-rose-600 transition" title="Eliminar Docente"><i class="fa-solid fa-trash"></i></button>
                             </div>
