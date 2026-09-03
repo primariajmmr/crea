@@ -783,7 +783,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = '16.2';
+        const APP_VERSION = 'v16.3';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -4660,11 +4660,17 @@
                 <!-- 2. Gráficas -->
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
-                        <h4 class="text-sm font-bold text-slate-600 mb-6 text-center uppercase tracking-wide">Distribución por Campo Formativo (100%) | Grado ${teacher.group} | Ciclo ${teacher.cycle}</h4>
+                        <div class="flex items-start justify-between gap-3 mb-6">
+                            <h4 class="text-sm font-bold text-slate-600 text-center uppercase tracking-wide flex-1">Distribución por Campo Formativo (100%) | Grado ${teacher.group} | Ciclo ${teacher.cycle}</h4>
+                            <button type="button" onclick="copyEvalChart(this)" class="shrink-0 text-indigo-600 hover:text-indigo-800 transition" title="Copiar gráfica con título" aria-label="Copiar gráfica con título"><i class="fa-regular fa-copy"></i></button>
+                        </div>
                         <div class="relative h-64"><canvas id="${chartPrefix}chart-campos"></canvas></div>
                     </div>
                     <div class="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm">
-                        <h4 class="text-sm font-bold text-slate-600 mb-6 text-center uppercase tracking-wide">Proporción de Logro General | Grado ${teacher.group} | Ciclo ${teacher.cycle}</h4>
+                        <div class="flex items-start justify-between gap-3 mb-6">
+                            <h4 class="text-sm font-bold text-slate-600 text-center uppercase tracking-wide flex-1">Proporción de Logro General | Grado ${teacher.group} | Ciclo ${teacher.cycle}</h4>
+                            <button type="button" onclick="copyEvalChart(this)" class="shrink-0 text-indigo-600 hover:text-indigo-800 transition" title="Copiar gráfica con título" aria-label="Copiar gráfica con título"><i class="fa-regular fa-copy"></i></button>
+                        </div>
                         <div class="relative h-64"><canvas id="${chartPrefix}chart-general"></canvas></div>
                     </div>
                 </div>
@@ -5054,6 +5060,48 @@
             return null;
         }
 
+        async function copyEvalChart(button) {
+            const card = button?.closest('.bg-white');
+            const sourceCanvas = card?.querySelector('canvas');
+            const title = card?.querySelector('h4')?.textContent?.trim();
+            if (!sourceCanvas || !title) return;
+
+            if (!navigator.clipboard || typeof ClipboardItem === 'undefined') {
+                appAlert('Tu navegador no permite copiar gráficas directamente.');
+                return;
+            }
+
+            const outputCanvas = document.createElement('canvas');
+            const outputWidth = Math.max(sourceCanvas.width, 900);
+            const titleHeight = 70;
+            outputCanvas.width = outputWidth;
+            outputCanvas.height = sourceCanvas.height + titleHeight;
+            const context = outputCanvas.getContext('2d');
+            context.fillStyle = '#ffffff';
+            context.fillRect(0, 0, outputCanvas.width, outputCanvas.height);
+            context.fillStyle = '#334155';
+            context.font = 'bold 22px Inter, sans-serif';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(title, outputCanvas.width / 2, titleHeight / 2, outputCanvas.width - 40);
+            context.drawImage(sourceCanvas, (outputWidth - sourceCanvas.width) / 2, titleHeight);
+
+            try {
+                const blob = await new Promise(resolve => outputCanvas.toBlob(resolve, 'image/png'));
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+                const originalIcon = button.innerHTML;
+                button.innerHTML = '<i class="fa-solid fa-check"></i>';
+                button.title = 'Gráfica copiada';
+                setTimeout(() => {
+                    button.innerHTML = originalIcon;
+                    button.title = 'Copiar gráfica con título';
+                }, 1600);
+            } catch (error) {
+                console.error('No fue posible copiar la gráfica:', error);
+                appAlert('No fue posible copiar la gráfica. Revisa los permisos del navegador.');
+            }
+        }
+
         function getPdfDateLabel() {
             const today = new Date();
             const fecha = today.toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -5199,28 +5247,43 @@
             y = ensurePdfSpace(doc, y, 60, teacher, 'Análisis de Resultados', `Periodo: ${periodo}`);
             doc.setFontSize(11); doc.setFont('helvetica', 'bold');
             doc.text('Alumnos que requieren apoyo por Campo Formativo', 40, y);
-            y += 14;
+            y += 20;
 
-            data.campos.forEach((campo) => {
-                y = ensurePdfSpace(doc, y, 34, teacher, 'Análisis de Resultados', `Periodo: ${periodo}`);
-                doc.setFontSize(10); doc.setFont('helvetica', 'bold');
-                doc.text(`• ${campo.nombre}`, 40, y);
-                y += 12;
+            const fieldColumns = [40, 306];
+            const fieldWidth = 245;
+            for (let rowIndex = 0; rowIndex < data.campos.length; rowIndex += 2) {
+                const rowFields = data.campos.slice(rowIndex, rowIndex + 2);
+                const renderedFields = rowFields.map((campo) => {
+                    const students = campo.alumnosApoyo.length > 0
+                        ? campo.alumnosApoyo.map(a => `- ${a.nombre} (${a.calif.toFixed(1)})`)
+                        : ['Sin alumnos en requiere apoyo.'];
+                    const titleLines = doc.splitTextToSize(campo.nombre, fieldWidth - 16);
+                    const studentLines = students.flatMap(student => doc.splitTextToSize(student, fieldWidth - 16));
+                    return { titleLines, studentLines, height: 12 + (titleLines.length * 11) + (studentLines.length * 11) + 10 };
+                });
+                const rowHeight = Math.max(...renderedFields.map(field => field.height));
 
-                if (campo.alumnosApoyo.length === 0) {
-                    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-                    doc.text('Sin alumnos en requiere apoyo.', 56, y);
-                    y += 12;
-                } else {
-                    campo.alumnosApoyo.forEach((a) => {
-                        y = ensurePdfSpace(doc, y, 14, teacher, 'Análisis de Resultados', `Periodo: ${periodo}`);
-                        doc.setFontSize(9); doc.setFont('helvetica', 'normal');
-                        doc.text(`- ${a.nombre} (${a.calif.toFixed(1)})`, 56, y);
-                        y += 11;
-                    });
+                if (y + rowHeight > doc.internal.pageSize.height - 110) {
+                    doc.addPage();
+                    y = drawPdfHeader(doc, teacher, 'Análisis de Resultados', `Periodo: ${periodo}`);
+                    doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+                    doc.text('Alumnos que requieren apoyo por Campo Formativo', 40, y);
+                    y += 20;
                 }
-                y += 4;
-            });
+
+                renderedFields.forEach((field, columnIndex) => {
+                    const x = fieldColumns[columnIndex];
+                    doc.setFillColor(255, 241, 242);
+                    doc.setDrawColor(253, 164, 175);
+                    doc.roundedRect(x, y - 10, fieldWidth, rowHeight - 4, 5, 5, 'FD');
+                    doc.setFontSize(9); doc.setFont('helvetica', 'bold');
+                    doc.text(field.titleLines, x + 8, y, { lineHeightFactor: 1.15 });
+                    const studentsY = y + (field.titleLines.length * 11) + 5;
+                    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+                    doc.text(field.studentLines, x + 8, studentsY, { lineHeightFactor: 1.2 });
+                });
+                y += rowHeight + 10;
+            }
 
             doc.addPage();
             y = drawPdfHeader(doc, teacher, 'Análisis de Resultados', `Periodo: ${periodo}`);
@@ -5241,7 +5304,7 @@
             }
 
             addFooterSignaturesAllPages(doc, teacher);
-            doc.save(`Analisis_Resultados_${periodo.replace(/\s+/g,'_')}.pdf`);
+            doc.save(`${teacher.group}_Analisis_Resultados_${periodo}.pdf`);
         }
 
         function exportEvalTablePDF() {
