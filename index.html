@@ -586,6 +586,24 @@
         </div>
     </div>
 
+    <div id="modal-eval-observations" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-overlay">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 p-6 border border-slate-100 fade-in max-h-[90vh] flex flex-col">
+            <div class="flex items-start justify-between mb-4">
+                <div>
+                    <h3 id="eval-observations-title" class="font-bold text-slate-800 text-lg">Observaciones</h3>
+                    <p class="text-sm text-slate-500 mt-1">Captura las observaciones de cada alumno. Los cambios se guardan automáticamente.</p>
+                </div>
+                <button onclick="closeEvalObservationsModal()" class="text-slate-400 hover:text-slate-600 transition" title="Cerrar">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div id="eval-observations-list" class="space-y-4 overflow-y-auto pr-1"></div>
+            <div class="flex justify-end mt-5 pt-4 border-t border-slate-200">
+                <button onclick="closeEvalObservationsModal()" class="bg-slate-100 text-slate-700 font-bold px-5 py-2.5 rounded-xl hover:bg-slate-200 transition">Cerrar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modal-teacher" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-overlay">
         <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-6 border border-slate-100 fade-in">
             <div class="flex items-start justify-between mb-4">
@@ -783,7 +801,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = 'v16.3';
+        const APP_VERSION = 'v16.5';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -906,6 +924,32 @@
                 confirmCallback();
             }
             confirmCallback = null;
+        }
+
+        function openEvalObservationsModal() {
+            const teacher = db.teachers.find(t => t.id === session.teacherId);
+            const list = document.getElementById('eval-observations-list');
+            if (!teacher || !list) return appAlert('No se encontró el grupo del docente.');
+
+            const periodo = session.currentEvalPeriod || 'Diagnóstico';
+            const title = document.getElementById('eval-observations-title');
+            if (title) title.textContent = `Observaciones de ${periodo}`;
+            const students = sortStudents(teacher.students || []);
+            list.innerHTML = students.length
+                ? students.map((stu, index) => `
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <label for="eval-observation-${stu.id}" class="block text-sm font-bold text-slate-700 mb-2">
+                            ${index + 1}. ${escapeHtml(`${stu.paterno} ${stu.materno} ${stu.nombres}`)}
+                        </label>
+                        <textarea id="eval-observation-${stu.id}" class="w-full min-h-24 border border-slate-300 rounded-xl p-3 text-sm bg-white outline-none focus:border-indigo-500" placeholder="Escribe la observación del alumno..." oninput="updateStudentObservation('${stu.id}', '${periodo}', this.value)">${escapeHtml(getStudentObservation(stu.id, periodo))}</textarea>
+                    </div>`).join('')
+                : '<div class="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-500 font-semibold">No hay alumnos registrados en este grupo.</div>';
+
+            document.getElementById('modal-eval-observations').classList.remove('hidden');
+        }
+
+        function closeEvalObservationsModal() {
+            document.getElementById('modal-eval-observations').classList.add('hidden');
         }
 
         function setFirebaseStatusLabel(text, tone = 'neutral') {
@@ -2671,6 +2715,7 @@
         }
 
         function updateStudentObservation(stuId, periodo, value) {
+            if (!db.studentObservations) db.studentObservations = {};
             if (!db.studentObservations[stuId]) db.studentObservations[stuId] = {};
             if (String(value || '').trim()) {
                 db.studentObservations[stuId][periodo] = String(value).trim();
@@ -4023,6 +4068,7 @@
                                 <p class="text-sm text-slate-500 mt-2">Docente: ${db.teachers.find(t => t.id === session.teacherId)?.name || ''} | Grado: ${db.teachers.find(t => t.id === session.teacherId)?.group || ''}</p>
                             </div>
                             <div class="flex flex-wrap items-center gap-3">
+                                <button onclick="openEvalObservationsModal()" class="px-4 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-sm font-bold hover:bg-amber-100 transition shadow-sm"><i class="fa-solid fa-comment-dots mr-1"></i> Observaciones</button>
                                 <button onclick="exportEvalTablePDF()" class="px-4 py-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-bold hover:bg-rose-100 transition shadow-sm"><i class="fa-solid fa-table mr-1"></i> Tabla PDF</button>
                                 <button onclick="exportEvalStatsPDF()" class="px-4 py-2.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-sm font-bold hover:bg-indigo-100 transition shadow-sm"><i class="fa-solid fa-chart-pie mr-1"></i> Análisis PDF</button>
                             </div>
@@ -5131,7 +5177,7 @@
             return 96;
         }
 
-        function drawSignatureFooter(doc, teacher) {
+        function drawSignatureFooter(doc, teacher, responsibleNna = false) {
             const pageH = doc.internal.pageSize.height;
             const pageW = doc.internal.pageSize.width;
             const y = pageH - 54;
@@ -5144,16 +5190,17 @@
             doc.text(teacher.name, pageW / 4, y + 14, { align: 'center' });
             doc.text('Docente de Grupo', pageW / 4, y + 24, { align: 'center' });
 
-            const dirName = db.directorName || 'Director(a) de la Escuela';
-            doc.text(dirName, (pageW * 3) / 4, y + 14, { align: 'center' });
-            doc.text('Director(a)', (pageW * 3) / 4, y + 24, { align: 'center' });
+            const rightSignatureName = responsibleNna ? 'Firma de la persona responsable del NNA' : (db.directorName || 'Director(a) de la Escuela');
+            const rightSignatureRole = responsibleNna ? '' : 'Director(a)';
+            doc.text(rightSignatureName, (pageW * 3) / 4, y + 14, { align: 'center' });
+            if (rightSignatureRole) doc.text(rightSignatureRole, (pageW * 3) / 4, y + 24, { align: 'center' });
         }
 
-        function addFooterSignaturesAllPages(doc, teacher) {
+        function addFooterSignaturesAllPages(doc, teacher, responsibleNna = false) {
             const pages = doc.internal.getNumberOfPages();
             for (let i = 1; i <= pages; i++) {
                 doc.setPage(i);
-                drawSignatureFooter(doc, teacher);
+                drawSignatureFooter(doc, teacher, responsibleNna);
             }
         }
 
@@ -5196,7 +5243,7 @@
                         }
                     },
                     scales: {
-                        y: { min: 0, max: 10, ticks: { stepSize: 1 } }
+                        y: { min: 5, max: 10, ticks: { stepSize: 1 } }
                     }
                 }
             });
@@ -5719,7 +5766,7 @@
             const selectedRows = allGroup ? bundle.rows : bundle.rows.filter(r => r.studentId === selectedId);
             if (selectedRows.length === 0) return appAlert('Seleccione un alumno válido.');
 
-            const doc = new jsPDF('p', 'pt', 'letter');
+            const doc = new jsPDF('l', 'pt', 'letter');
             const fmt = (v) => v === null ? '-' : truncateToOne(v).toFixed(1);
             let first = true;
 
@@ -5736,27 +5783,60 @@
                 doc.setFontSize(12); doc.setFont('helvetica', 'bold');
                 doc.text(`Reporte de Avance por Alumno: ${row.alumno}`, 40, 86);
 
+                const periods = ['Diagnóstico', 'Primer Periodo', 'Segundo Periodo', 'Tercer Periodo'];
+                const getPeriodFields = (periodo) => CAMPOS_FORMATIVOS.map(campo => {
+                    if (periodo === 'Diagnóstico') {
+                        const raw = db.evalData?.[row.studentId]?.[periodo]?.campos?.[campo];
+                        const value = raw === undefined || raw === null || raw === '' ? null : parseFloat(raw);
+                        return Number.isNaN(value) ? null : value;
+                    }
+                    return getCampoWithPEAverage(row.studentId, periodo, campo);
+                });
+                const periodRows = periods.map(periodo => {
+                    const fields = getPeriodFields(periodo);
+                    const average = getMomentAverage(row.studentId, periodo);
+                    return [periodo, ...fields.map(fmt), fmt(average), getNivelLogro(average)];
+                });
+                const avanceNivel = row.avanceRaw === null
+                    ? 'Sin dato'
+                    : row.avanceRaw > 0
+                        ? 'Mejora'
+                        : row.avanceRaw < 0
+                            ? 'Descenso'
+                            : 'Sin cambio';
+                periodRows.push([
+                    'Avance (Diag. vs Tercer)',
+                    '',
+                    '',
+                    '',
+                    '',
+                    row.avanceTxt,
+                    avanceNivel
+                ]);
+
                 doc.autoTable({
                     startY: 98,
-                    head: [['Momento', 'Calificación', 'Nivel']],
-                    body: [
-                        ['Diagnóstico', fmt(row.diag), getNivelLogro(row.diag)],
-                        ['Primer Periodo', fmt(row.p1), getNivelLogro(row.p1)],
-                        ['Segundo Periodo', fmt(row.p2), getNivelLogro(row.p2)],
-                        ['Tercer Periodo', fmt(row.p3), getNivelLogro(row.p3)],
-                        ['Promedio General', fmt(row.promGeneral), getNivelLogro(row.promGeneral)],
-                        ['Avance (Diag. vs Tercer)', row.avanceTxt, row.avanceRaw === null ? 'Sin dato' : (row.avanceRaw > 0 ? 'Mejora' : (row.avanceRaw < 0 ? 'Descenso' : 'Sin cambio'))]
-                    ],
-                    styles: { fontSize: 9 },
+                    head: [['Periodo', ...CAMPOS_FORMATIVOS, 'Promedio', 'Nivel']],
+                    body: periodRows,
+                    styles: { fontSize: 8, valign: 'middle' },
                     headStyles: { fillColor: [67, 56, 202] },
-                    margin: { left: 40, right: 40 }
+                    margin: { left: 40, right: 40 },
+                    columnStyles: {
+                        0: { cellWidth: 90 },
+                        1: { cellWidth: 72, halign: 'center' },
+                        2: { cellWidth: 92, halign: 'center' },
+                        3: { cellWidth: 108, halign: 'center' },
+                        4: { cellWidth: 108, halign: 'center' },
+                        5: { cellWidth: 72, halign: 'center' },
+                        6: { cellWidth: 86, halign: 'center' }
+                    }
                 });
 
                 const points = [row.diag, row.p1, row.p2, row.p3].map(v => v === null ? null : Number(truncateToOne(v).toFixed(1)));
                 const chartImg = await createTempLineChartImage(row.alumno, points);
+                const chartY = doc.lastAutoTable.finalY + 8;
                 if (chartImg) {
-                    const y = doc.lastAutoTable.finalY + 14;
-                    doc.addImage(chartImg, 'PNG', 55, y, 500, 230);
+                    doc.addImage(chartImg, 'PNG', 55, chartY, 500, 160);
                 }
 
                 const snapshotRows = [
@@ -5766,12 +5846,12 @@
                     ['Tercer Periodo', row.p3 === null ? '-' : fmt(row.p3), getNivelLogro(row.p3), getStudentObservation(row.studentId, 'Tercer Periodo')]
                 ];
 
-                const tableY = doc.lastAutoTable.finalY + 14;
+                const tableY = chartImg ? chartY + 168 : doc.lastAutoTable.finalY + 8;
                 doc.autoTable({
                     startY: tableY,
                     head: [['Periodo', 'Calificación', 'Nivel', 'Observación']],
                     body: snapshotRows,
-                    styles: { fontSize: 9 },
+                    styles: { fontSize: 8, cellPadding: 3, valign: 'middle' },
                     headStyles: { fillColor: [55, 48, 163] },
                     margin: { left: 40, right: 40 },
                     columnStyles: {
@@ -5783,9 +5863,9 @@
                 });
             }
 
-            addFooterSignaturesAllPages(doc, teacher);
+            addFooterSignaturesAllPages(doc, teacher, allGroup);
 
-            doc.save(allGroup ? 'Reportes_Avance_Grupo.pdf' : `Reporte_Avance_${selectedRows[0].alumno.replace(/\s+/g,'_')}.pdf`);
+            doc.save(allGroup ? `${teacher.group}_Reportes_Avance_Grupo.pdf` : `Reporte_Avance_${selectedRows[0].alumno.replace(/\s+/g,'_')}.pdf`);
         }
 
         async function exportStudentHistoryReportPDF() {
