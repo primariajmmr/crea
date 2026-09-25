@@ -151,12 +151,16 @@
                         <h3 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-chart-pie mr-2 text-indigo-500"></i>Análisis de Resultados de la Escuela</h3>
                         <p class="text-sm text-slate-500">Concentrado de 1.º a 6.º del ciclo activo.</p>
                     </div>
-                    <select id="admin-school-analysis-period" class="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold outline-none focus:border-indigo-500" onchange="renderSchoolAnalysis(this.value)">
-                        <option value="Diagnóstico">Diagnóstico</option>
-                        <option value="Primer Periodo">Primer Periodo</option>
-                        <option value="Segundo Periodo">Segundo Periodo</option>
-                        <option value="Tercer Periodo">Tercer Periodo</option>
-                    </select>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <select id="admin-school-analysis-period" class="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold outline-none focus:border-indigo-500" onchange="renderSchoolAnalysis(this.value)">
+                            <option value="" selected disabled>Selecciona el Periodo</option>
+                            <option value="Diagnóstico">Diagnóstico</option>
+                            <option value="Primer Periodo">Primer Periodo</option>
+                            <option value="Segundo Periodo">Segundo Periodo</option>
+                            <option value="Tercer Periodo">Tercer Periodo</option>
+                        </select>
+                        <button type="button" onclick="exportSchoolAnalysisPDF()" class="rounded-xl bg-rose-50 px-3 py-2 text-rose-700 border border-rose-200 font-bold hover:bg-rose-100 transition" title="Descargar análisis escolar en PDF" aria-label="Descargar análisis escolar en PDF"><i class="fa-solid fa-file-pdf mr-1"></i><span class="hidden sm:inline">PDF</span></button>
+                    </div>
                 </div>
                 <div id="admin-school-analysis-area" class="p-6"></div>
             </div>
@@ -835,7 +839,8 @@
             evalData: {}, // Nuevo: { stuId: { "Diagnóstico": { lecto: "SI", campos: { "Lenguajes": 9 } } } }
             peData: {}, // { teacherId: { "Primer Periodo": { stuId: 9.5 } } }
             lectoData: {}, // { teacherId: { "Diagnóstico": { stuId: "Alfabético" } } }
-            studentObservations: {} // { stuId: { "Primer Periodo": "Observación" } }
+            studentObservations: {}, // { stuId: { "Primer Periodo": "Observación" } }
+            groupObservations: {} // { teacherId: { "Diagnóstico": "Observación grupal" } }
         };
         
         let session = { 
@@ -860,8 +865,9 @@
         let editingStudentTeacherId = null;
         let editingStudentId = null;
         let adminControlTab = 'configuracion';
-        let schoolAnalysisPeriod = 'Diagnóstico';
+        let schoolAnalysisPeriod = '';
         let schoolAnalysisCharts = [];
+        let schoolAnalysisRetryCount = 0;
         let adminManagementTab = 'docentes';
         let studentManagementGroup = '';
         let studentManagementSearch = '';
@@ -952,7 +958,12 @@
             const title = document.getElementById('eval-observations-title');
             if (title) title.textContent = `Observaciones de ${periodo}`;
             const students = sortStudents(teacher.students || []);
-            list.innerHTML = students.length
+            list.innerHTML = `
+                <div class="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+                    <label for="eval-group-observation" class="block text-sm font-bold text-indigo-900 mb-2">Observación Grupal del ${periodo}</label>
+                    <textarea id="eval-group-observation" class="w-full min-h-28 border border-indigo-200 rounded-xl p-3 text-sm bg-white outline-none focus:border-indigo-500" placeholder="Escribe la observación general del grupo para este periodo..." oninput="updateGroupObservation('${teacher.id}', '${periodo}', this.value)">${escapeHtml(getGroupObservation(teacher.id, periodo))}</textarea>
+                </div>
+                ${students.length
                 ? students.map((stu, index) => `
                     <div class="rounded-xl border border-slate-200 bg-slate-50 p-4">
                         <label for="eval-observation-${stu.id}" class="block text-sm font-bold text-slate-700 mb-2">
@@ -960,7 +971,7 @@
                         </label>
                         <textarea id="eval-observation-${stu.id}" class="w-full min-h-24 border border-slate-300 rounded-xl p-3 text-sm bg-white outline-none focus:border-indigo-500" placeholder="Escribe la observación del alumno..." oninput="updateStudentObservation('${stu.id}', '${periodo}', this.value)">${escapeHtml(getStudentObservation(stu.id, periodo))}</textarea>
                     </div>`).join('')
-                : '<div class="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-500 font-semibold">No hay alumnos registrados en este grupo.</div>';
+                : '<div class="rounded-xl border border-dashed border-slate-300 p-8 text-center text-slate-500 font-semibold">No hay alumnos registrados en este grupo.</div>'}`;
 
             document.getElementById('modal-eval-observations').classList.remove('hidden');
         }
@@ -1148,6 +1159,7 @@
             if(!db.peData) db.peData = {};
             if(!db.lectoData) db.lectoData = {};
             if(!db.studentObservations) db.studentObservations = {};
+            if(!db.groupObservations) db.groupObservations = {};
             
             // Inicializar sistema de usuarios si no existe
             if(!db.users) {
@@ -1666,11 +1678,12 @@
             };
             const isDiag = periodo === 'Diagnóstico';
 
-            teachers.forEach(teacher => (teacher.students || []).forEach(student => {
+            teachers.forEach(teacher => (Array.isArray(teacher.students) ? teacher.students : []).forEach(student => {
+                if (!student || !student.id) return;
                 const gradeData = data.byGrade[getSchoolGradeLabel(teacher.group)];
                 data.totalAlumnos++;
                 if (gradeData) gradeData.alumnos++;
-                const stored = db.evalData[student.id] && db.evalData[student.id][periodo] ? db.evalData[student.id][periodo] : { campos: {} };
+                const stored = db.evalData?.[student.id]?.[periodo] || { campos: {} };
                 const grades = [];
 
                 CAMPOS_FORMATIVOS.forEach((campo, index) => {
@@ -1701,10 +1714,26 @@
         }
 
         function renderSchoolAnalysis(periodo = schoolAnalysisPeriod) {
-            schoolAnalysisPeriod = periodo || 'Diagnóstico';
+            schoolAnalysisPeriod = periodo || '';
             const target = document.getElementById('admin-school-analysis-area');
             if (!target) return;
-            const data = getSchoolAnalysisData(schoolAnalysisPeriod);
+            if (!schoolAnalysisPeriod) {
+                target.innerHTML = '<div class="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-500"><i class="fa-solid fa-arrow-up mr-2 text-indigo-500"></i>Selecciona un periodo para mostrar el análisis.</div>';
+                return;
+            }
+            let data;
+            try {
+                data = getSchoolAnalysisData(schoolAnalysisPeriod);
+            } catch (error) {
+                console.error('No se pudo calcular el análisis escolar:', error);
+                target.innerHTML = '<div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Preparando el análisis escolar...</div>';
+                if (schoolAnalysisPeriod && schoolAnalysisRetryCount < 12) {
+                    schoolAnalysisRetryCount++;
+                    window.setTimeout(() => renderSchoolAnalysis('Diagnóstico'), 250);
+                }
+                return;
+            }
+            schoolAnalysisRetryCount = 0;
             schoolAnalysisCharts.forEach(chart => chart.destroy());
             schoolAnalysisCharts = [];
 
@@ -1793,7 +1822,7 @@
             renderCycleHistory();
             const schoolPeriodSelect = document.getElementById('admin-school-analysis-period');
             if (schoolPeriodSelect) schoolPeriodSelect.value = schoolAnalysisPeriod;
-            renderSchoolAnalysis(schoolAnalysisPeriod);
+            requestAnimationFrame(() => window.setTimeout(() => renderSchoolAnalysis(schoolAnalysisPeriod), 50));
             
             renderTeachersList();
             renderStudentManagementPanel();
@@ -2853,6 +2882,21 @@
 
         function getStudentObservation(stuId, periodo) {
             return db.studentObservations?.[stuId]?.[periodo] || '';
+        }
+
+        function getGroupObservation(teacherId, periodo) {
+            return db.groupObservations?.[teacherId]?.[periodo] || '';
+        }
+
+        function updateGroupObservation(teacherId, periodo, value) {
+            if (!db.groupObservations) db.groupObservations = {};
+            if (!db.groupObservations[teacherId]) db.groupObservations[teacherId] = {};
+            if (String(value || '').trim()) {
+                db.groupObservations[teacherId][periodo] = String(value).trim();
+            } else {
+                delete db.groupObservations[teacherId][periodo];
+            }
+            saveDb();
         }
 
         function updateStudentObservation(stuId, periodo, value) {
@@ -4210,6 +4254,13 @@
                             </div>
                             <div class="flex flex-wrap items-center gap-3">
                                 <button onclick="openEvalObservationsModal()" class="px-4 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-xl text-sm font-bold hover:bg-amber-100 transition shadow-sm"><i class="fa-solid fa-comment-dots mr-1"></i> Observaciones</button>
+                                <details class="relative">
+                                    <summary class="list-none cursor-pointer px-4 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl text-sm font-bold hover:bg-emerald-100 transition shadow-sm"><i class="fa-solid fa-download mr-1"></i> Descargar observaciones <i class="fa-solid fa-chevron-down ml-1 text-xs"></i></summary>
+                                    <div class="absolute right-0 z-20 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+                                        <button onclick="exportPeriodObservationsExcel()" class="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-bold text-emerald-700 hover:bg-emerald-50"><i class="fa-solid fa-file-excel w-5"></i> Descargar en Excel</button>
+                                        <button onclick="exportPeriodObservationsPDF()" class="flex w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm font-bold text-rose-700 hover:bg-rose-50"><i class="fa-solid fa-file-pdf w-5"></i> Descargar en PDF</button>
+                                    </div>
+                                </details>
                                 <button onclick="exportEvalTablePDF()" class="px-4 py-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-bold hover:bg-rose-100 transition shadow-sm"><i class="fa-solid fa-table mr-1"></i> Tabla PDF</button>
                                 <button onclick="exportEvalStatsPDF()" class="px-4 py-2.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl text-sm font-bold hover:bg-indigo-100 transition shadow-sm"><i class="fa-solid fa-chart-pie mr-1"></i> Análisis PDF</button>
                             </div>
@@ -5395,6 +5446,155 @@
             return img;
         }
 
+        function exportSchoolAnalysisPDF() {
+            if (!schoolAnalysisPeriod) return appAlert('Selecciona un periodo antes de descargar el PDF.');
+            if (!ensureJSPDF()) return;
+
+            let data;
+            try {
+                data = getSchoolAnalysisData(schoolAnalysisPeriod);
+            } catch (error) {
+                console.error('No se pudo preparar el PDF del análisis escolar:', error);
+                return appAlert('No se pudo preparar el análisis escolar. Intenta nuevamente.');
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'pt', 'letter');
+            const schoolHeader = { name: 'Concentrado escolar', group: '1.º a 6.º', cycle: db.activeCycle };
+            let y = drawPdfHeader(doc, schoolHeader, 'Análisis de Resultados de la Escuela', `Periodo: ${schoolAnalysisPeriod}`);
+
+            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+            doc.text('Resumen general de la escuela', 40, y);
+            y += 14;
+            doc.autoTable({
+                startY: y,
+                head: [['Total Alumnos', 'Grupos', 'Logrado', 'En Desarrollo', 'Requiere Apoyo']],
+                body: [[data.totalAlumnos, data.totalGrupos, data.promedio.logrado, data.promedio.desarrollo, data.promedio.apoyo]],
+                theme: 'grid',
+                headStyles: { fillColor: [67, 56, 202], textColor: 255, halign: 'center' },
+                bodyStyles: { halign: 'center', fontStyle: 'bold' },
+                styles: { fontSize: 9 }
+            });
+
+            y = doc.lastAutoTable.finalY + 24;
+            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+            doc.text('Concentrado por grado', 40, y);
+            y += 10;
+            doc.autoTable({
+                startY: y,
+                head: [['Grado', 'Alumnos', 'Logrado', 'En Desarrollo', 'Requiere Apoyo']],
+                body: Object.values(data.byGrade).map(grade => [grade.grado, grade.alumnos, grade.logrado, grade.desarrollo, grade.apoyo]),
+                foot: [['Total escuela', data.totalAlumnos, data.promedio.logrado, data.promedio.desarrollo, data.promedio.apoyo]],
+                theme: 'grid',
+                headStyles: { fillColor: [79, 70, 229], textColor: 255, halign: 'center' },
+                footStyles: { fillColor: [224, 231, 255], textColor: [30, 41, 59], fontStyle: 'bold', halign: 'center' },
+                bodyStyles: { halign: 'center' },
+                columnStyles: { 0: { halign: 'left', fontStyle: 'bold' } },
+                styles: { fontSize: 9 }
+            });
+
+            y = doc.lastAutoTable.finalY + 24;
+            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+            doc.text('Resultados por Campo Formativo', 40, y);
+            y += 10;
+            doc.autoTable({
+                startY: y,
+                head: [['Campo Formativo', 'Logrado', 'En Desarrollo', 'Requiere Apoyo']],
+                body: data.campos.map(campo => [campo.nombre, campo.logrado, campo.desarrollo, campo.apoyo]),
+                theme: 'grid',
+                headStyles: { fillColor: [99, 102, 241], textColor: 255, halign: 'center' },
+                bodyStyles: { halign: 'center' },
+                columnStyles: { 0: { halign: 'left', cellWidth: 220 } },
+                styles: { fontSize: 8.5 }
+            });
+
+            const chartCampos = dataUrlFromCanvas('admin-school-chart-campos');
+            const chartGeneral = dataUrlFromCanvas('admin-school-chart-general');
+            if (chartCampos || chartGeneral) {
+                doc.addPage();
+                y = drawPdfHeader(doc, schoolHeader, 'Análisis de Resultados de la Escuela', `Gráficas | Periodo: ${schoolAnalysisPeriod}`);
+                if (chartCampos) doc.addImage(chartCampos, 'PNG', 40, y, 532, 245);
+                if (chartGeneral) doc.addImage(chartGeneral, 'PNG', 150, y + 270, 312, 235);
+            }
+
+            const safePeriod = schoolAnalysisPeriod.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ]+/g, '_');
+            doc.save(`Analisis_Escolar_${safePeriod}_${db.activeCycle}.pdf`);
+        }
+
+        function getCurrentPeriodObservationRows() {
+            const teacher = db.teachers.find(t => t.id === session.teacherId);
+            const periodo = session.currentEvalPeriod || 'Diagnóstico';
+            if (!teacher) return null;
+            const students = sortStudents(teacher.students || []);
+            return {
+                teacher,
+                periodo,
+                groupObservation: getGroupObservation(teacher.id, periodo),
+                students: students.map((student, index) => ({
+                    no: index + 1,
+                    alumno: `${student.paterno || ''} ${student.materno || ''} ${student.nombres || ''}`.replace(/\s+/g, ' ').trim(),
+                    observacion: getStudentObservation(student.id, periodo)
+                }))
+            };
+        }
+
+        function exportPeriodObservationsExcel() {
+            const bundle = getCurrentPeriodObservationRows();
+            if (!bundle) return appAlert('No se encontró el grupo del docente.');
+            if (typeof XLSX === 'undefined') return appAlert('La librería de Excel no está cargada.');
+
+            const rows = [
+                ['Tipo', 'No.', 'Alumno / Grupo', 'Observación', 'Periodo'],
+                ['Grupal', '', `${bundle.teacher.name} - Grado ${bundle.teacher.group}`, bundle.groupObservation || '', bundle.periodo],
+                ...bundle.students.map(student => ['Alumno', student.no, student.alumno, student.observacion || '', bundle.periodo])
+            ];
+            const worksheet = XLSX.utils.aoa_to_sheet(rows);
+            worksheet['!cols'] = [{ wch: 14 }, { wch: 8 }, { wch: 38 }, { wch: 90 }, { wch: 20 }];
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Observaciones');
+            XLSX.writeFile(workbook, `Observaciones_${bundle.periodo.replace(/\s+/g, '_')}_${bundle.teacher.group || 'Grupo'}.xlsx`);
+        }
+
+        function exportPeriodObservationsPDF() {
+            const bundle = getCurrentPeriodObservationRows();
+            if (!bundle) return appAlert('No se encontró el grupo del docente.');
+            if (!ensureJSPDF()) return;
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'pt', 'letter');
+            let y = drawPdfHeader(doc, bundle.teacher, 'Observaciones del Periodo', `Periodo: ${bundle.periodo}`);
+            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+            doc.text('Observación Grupal', 40, y);
+            y += 10;
+            doc.autoTable({
+                startY: y,
+                head: [['Grupo', 'Observación Grupal']],
+                body: [[`${bundle.teacher.name} - Grado ${bundle.teacher.group}`, bundle.groupObservation || 'Sin observación grupal registrada.']],
+                theme: 'grid',
+                headStyles: { fillColor: [5, 150, 105], textColor: 255 },
+                styles: { fontSize: 9, cellPadding: 7, valign: 'top' },
+                columnStyles: { 0: { cellWidth: 180 }, 1: { cellWidth: 340 } },
+                margin: { left: 40, right: 40 }
+            });
+
+            y = doc.lastAutoTable.finalY + 24;
+            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+            doc.text('Observaciones individuales', 40, y);
+            y += 10;
+            doc.autoTable({
+                startY: y,
+                head: [['No.', 'Alumno', 'Observación']],
+                body: bundle.students.map(student => [student.no, student.alumno, student.observacion || 'Sin observación registrada.']),
+                theme: 'grid',
+                headStyles: { fillColor: [79, 70, 229], textColor: 255 },
+                styles: { fontSize: 8.5, cellPadding: 6, valign: 'top' },
+                columnStyles: { 0: { cellWidth: 35, halign: 'center' }, 1: { cellWidth: 180 }, 2: { cellWidth: 305 } },
+                margin: { left: 40, right: 40 }
+            });
+            addFooterSignaturesAllPages(doc, bundle.teacher);
+            doc.save(`Observaciones_${bundle.periodo.replace(/\s+/g, '_')}_${bundle.teacher.group || 'Grupo'}.pdf`);
+        }
+
         function exportEvalStatsPDF() {
             if(!ensureJSPDF()) return;
             const { jsPDF } = window.jspdf;
@@ -5690,6 +5890,22 @@
             }
 
             y += 252;
+
+            y = ensurePdfSpace(doc, y, 42, teacher, 'Avance de los Aprendizajes', 'Observaciones grupales por periodo');
+            doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+            doc.text('Observaciones grupales por periodo', 40, y);
+            y += 10;
+            doc.autoTable({
+                startY: y,
+                head: [['Periodo', 'Observación Grupal']],
+                body: bundle.moments.map(moment => [moment, getGroupObservation(teacher.id, moment) || 'Sin observación grupal registrada.']),
+                theme: 'grid',
+                headStyles: { fillColor: [79, 70, 229], textColor: 255 },
+                styles: { fontSize: 9, cellPadding: 6, valign: 'top' },
+                columnStyles: { 0: { cellWidth: 100, fontStyle: 'bold' }, 1: { cellWidth: 420 } },
+                margin: { left: 40, right: 40 }
+            });
+            y = doc.lastAutoTable.finalY + 18;
 
             const generalBlocks = [
                 { key: 'apoyo', label: 'En Promedio General requieren apoyo', fill: [254, 226, 226], text: [153, 27, 27] },
