@@ -145,6 +145,21 @@
             </div>
 
             <div id="admin-summary-area" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200"></div>
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="flex flex-col gap-3 border-b border-slate-200 px-6 py-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-chart-pie mr-2 text-indigo-500"></i>Análisis de Resultados de la Escuela</h3>
+                        <p class="text-sm text-slate-500">Concentrado de 1.º a 6.º del ciclo activo.</p>
+                    </div>
+                    <select id="admin-school-analysis-period" class="rounded-xl border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold outline-none focus:border-indigo-500" onchange="renderSchoolAnalysis(this.value)">
+                        <option value="Diagnóstico">Diagnóstico</option>
+                        <option value="Primer Periodo">Primer Periodo</option>
+                        <option value="Segundo Periodo">Segundo Periodo</option>
+                        <option value="Tercer Periodo">Tercer Periodo</option>
+                    </select>
+                </div>
+                <div id="admin-school-analysis-area" class="p-6"></div>
+            </div>
             
             <div class="space-y-4">
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -801,7 +816,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = 'v16.5';
+        const APP_VERSION = 'v16.6';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -845,6 +860,8 @@
         let editingStudentTeacherId = null;
         let editingStudentId = null;
         let adminControlTab = 'configuracion';
+        let schoolAnalysisPeriod = 'Diagnóstico';
+        let schoolAnalysisCharts = [];
         let adminManagementTab = 'docentes';
         let studentManagementGroup = '';
         let studentManagementSearch = '';
@@ -1618,6 +1635,127 @@
             };
         }
 
+        function isSchoolGrade(value) {
+            const grade = normalizeTeacherComparable(value);
+            return /^(1|2|3|4|5|6)(ro|do|to|ero|º|°|\s|-|\.|$)/.test(grade)
+                || /^(primero|segundo|tercero|cuarto|quinto|sexto)(\s|$)/.test(grade);
+        }
+
+        function getSchoolGradeLabel(value) {
+            const grade = normalizeTeacherComparable(value);
+            if (/^(1|primero)(ro|ero|º|°|\s|-|\.|$)/.test(grade)) return '1.º';
+            if (/^(2|segundo)(do|º|°|\s|-|\.|$)/.test(grade)) return '2.º';
+            if (/^(3|tercero)(ro|ero|º|°|\s|-|\.|$)/.test(grade)) return '3.º';
+            if (/^(4|cuarto)(to|º|°|\s|-|\.|$)/.test(grade)) return '4.º';
+            if (/^(5|quinto)(to|º|°|\s|-|\.|$)/.test(grade)) return '5.º';
+            if (/^(6|sexto)(to|º|°|\s|-|\.|$)/.test(grade)) return '6.º';
+            return 'Sin grado';
+        }
+
+        function getSchoolAnalysisData(periodo) {
+            const teachers = db.teachers.filter(teacher => teacher.cycle === db.activeCycle && isSchoolGrade(teacher.group));
+            const data = {
+                campos: CAMPOS_FORMATIVOS.map(nombre => ({ nombre, logrado: 0, desarrollo: 0, apoyo: 0 })),
+                promedio: { logrado: 0, desarrollo: 0, apoyo: 0 },
+                totalAlumnos: 0,
+                totalGrupos: teachers.length,
+                byGrade: ['1.º', '2.º', '3.º', '4.º', '5.º', '6.º'].reduce((grades, label) => {
+                    grades[label] = { grado: label, alumnos: 0, logrado: 0, desarrollo: 0, apoyo: 0 };
+                    return grades;
+                }, {})
+            };
+            const isDiag = periodo === 'Diagnóstico';
+
+            teachers.forEach(teacher => (teacher.students || []).forEach(student => {
+                const gradeData = data.byGrade[getSchoolGradeLabel(teacher.group)];
+                data.totalAlumnos++;
+                if (gradeData) gradeData.alumnos++;
+                const stored = db.evalData[student.id] && db.evalData[student.id][periodo] ? db.evalData[student.id][periodo] : { campos: {} };
+                const grades = [];
+
+                CAMPOS_FORMATIVOS.forEach((campo, index) => {
+                    const raw = isDiag ? stored.campos?.[campo] : getCampoWithPEAverage(student.id, periodo, campo);
+                    const value = raw !== undefined && raw !== null && raw !== '' ? truncateToOne(parseFloat(raw)) : null;
+                    if (value === null || Number.isNaN(value)) return;
+                    grades.push(value);
+                    if (value >= 8.6) data.campos[index].logrado++;
+                    else if (value >= 6.6) data.campos[index].desarrollo++;
+                    else data.campos[index].apoyo++;
+                });
+
+                if (grades.length === 0) return;
+                const average = truncateToOne(grades.reduce((sum, value) => sum + value, 0) / grades.length);
+                if (average >= 8.6) {
+                    data.promedio.logrado++;
+                    if (gradeData) gradeData.logrado++;
+                } else if (average >= 6.6) {
+                    data.promedio.desarrollo++;
+                    if (gradeData) gradeData.desarrollo++;
+                } else {
+                    data.promedio.apoyo++;
+                    if (gradeData) gradeData.apoyo++;
+                }
+            }));
+
+            return data;
+        }
+
+        function renderSchoolAnalysis(periodo = schoolAnalysisPeriod) {
+            schoolAnalysisPeriod = periodo || 'Diagnóstico';
+            const target = document.getElementById('admin-school-analysis-area');
+            if (!target) return;
+            const data = getSchoolAnalysisData(schoolAnalysisPeriod);
+            schoolAnalysisCharts.forEach(chart => chart.destroy());
+            schoolAnalysisCharts = [];
+
+            const totalGeneral = data.promedio.logrado + data.promedio.desarrollo + data.promedio.apoyo;
+            target.innerHTML = `
+                <div class="space-y-6">
+                    <div class="grid grid-cols-2 gap-4 md:grid-cols-5">
+                        <div class="rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm"><div class="text-3xl font-black text-slate-700">${data.totalAlumnos}</div><div class="mt-1 text-xs font-bold uppercase text-slate-500">Total Alumnos</div></div>
+                        <div class="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-center shadow-sm"><div class="text-3xl font-black text-indigo-700">${data.totalGrupos}</div><div class="mt-1 text-xs font-bold uppercase text-indigo-600">Grupos</div></div>
+                        <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-center shadow-sm"><div class="text-3xl font-black text-emerald-700">${data.promedio.logrado}</div><div class="mt-1 text-xs font-bold uppercase text-emerald-600">Nivel Logrado</div></div>
+                        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-center shadow-sm"><div class="text-3xl font-black text-amber-700">${data.promedio.desarrollo}</div><div class="mt-1 text-xs font-bold uppercase text-amber-600">En Desarrollo</div></div>
+                        <div class="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-center shadow-sm"><div class="text-3xl font-black text-rose-700">${data.promedio.apoyo}</div><div class="mt-1 text-xs font-bold uppercase text-rose-600">Requiere Apoyo</div></div>
+                    </div>
+                    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h4 class="mb-4 text-center text-sm font-bold uppercase tracking-wide text-slate-600">Distribución por Campo Formativo | Escuela | ${schoolAnalysisPeriod}</h4><div class="relative h-72"><canvas id="admin-school-chart-campos"></canvas></div></div>
+                        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><h4 class="mb-4 text-center text-sm font-bold uppercase tracking-wide text-slate-600">Proporción de Logro General | Escuela | ${schoolAnalysisPeriod}</h4><div class="relative h-72"><canvas id="admin-school-chart-general"></canvas></div></div>
+                    </div>
+                    <div class="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div class="border-b border-slate-200 bg-slate-50 px-5 py-4"><h4 class="text-sm font-bold uppercase tracking-wide text-slate-700">Concentrado por grado</h4><p class="mt-1 text-xs text-slate-500">Cantidades del promedio general por grado escolar.</p></div>
+                        <table class="w-full min-w-[620px] text-sm text-left">
+                            <thead class="border-b border-slate-200 bg-white text-xs uppercase tracking-wide text-slate-500"><tr><th class="px-5 py-3">Grado</th><th class="px-5 py-3 text-center">Alumnos</th><th class="px-5 py-3 text-center text-emerald-700">Logrado</th><th class="px-5 py-3 text-center text-amber-700">En Desarrollo</th><th class="px-5 py-3 text-center text-rose-700">Requiere Apoyo</th></tr></thead>
+                            <tbody class="divide-y divide-slate-100">${Object.values(data.byGrade).map(grade => `<tr class="hover:bg-slate-50"><td class="px-5 py-3 font-bold text-slate-700">${grade.grado}</td><td class="px-5 py-3 text-center font-semibold text-slate-600">${grade.alumnos}</td><td class="px-5 py-3 text-center font-bold text-emerald-700">${grade.logrado}</td><td class="px-5 py-3 text-center font-bold text-amber-700">${grade.desarrollo}</td><td class="px-5 py-3 text-center font-bold text-rose-700">${grade.apoyo}</td></tr>`).join('')}</tbody>
+                            <tfoot class="border-t-2 border-slate-200 bg-indigo-50"><tr><td class="px-5 py-3 font-black text-indigo-900">Total escuela</td><td class="px-5 py-3 text-center font-black text-indigo-900">${data.totalAlumnos}</td><td class="px-5 py-3 text-center font-black text-emerald-700">${data.promedio.logrado}</td><td class="px-5 py-3 text-center font-black text-amber-700">${data.promedio.desarrollo}</td><td class="px-5 py-3 text-center font-black text-rose-700">${data.promedio.apoyo}</td></tr></tfoot>
+                        </table>
+                    </div>
+                    <div class="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 text-sm text-indigo-800"><i class="fa-solid fa-circle-info mr-1"></i> Este concentrado incluye únicamente grupos de 1.º a 6.º del ciclo ${db.activeCycle}. No muestra listados nominales de alumnos que requieren apoyo.</div>
+                </div>`;
+
+            if (typeof Chart === 'undefined') return;
+            const percentages = key => data.campos.map(campo => {
+                const total = campo.logrado + campo.desarrollo + campo.apoyo || 1;
+                return Number(((campo[key] / total) * 100).toFixed(1));
+            });
+            const camposCanvas = document.getElementById('admin-school-chart-campos');
+            const generalCanvas = document.getElementById('admin-school-chart-general');
+            if (camposCanvas) schoolAnalysisCharts.push(new Chart(camposCanvas.getContext('2d'), {
+                type: 'bar',
+                data: { labels: ['Lenguajes', 'Saberes y Pens.', 'Ética, Nat.', 'De lo Humano'], datasets: [
+                    { label: 'Requiere Apoyo', data: percentages('apoyo'), backgroundColor: '#fca5a5', borderRadius: 4 },
+                    { label: 'En Desarrollo', data: percentages('desarrollo'), backgroundColor: '#fcd34d', borderRadius: 4 },
+                    { label: 'Logrado', data: percentages('logrado'), backgroundColor: '#6ee7b7', borderRadius: 4 }
+                ]},
+                options: { responsive: true, maintainAspectRatio: false, plugins: { tooltip: { callbacks: { label: context => `${context.dataset.label}: ${context.parsed.y}%` } } }, scales: { x: { stacked: true }, y: { stacked: true, max: 100, ticks: { callback: value => `${value}%` } } } }
+            }));
+            if (generalCanvas) schoolAnalysisCharts.push(new Chart(generalCanvas.getContext('2d'), {
+                type: 'doughnut',
+                data: { labels: ['Logrado', 'En Desarrollo', 'Requiere Apoyo'], datasets: [{ data: [data.promedio.logrado, data.promedio.desarrollo, data.promedio.apoyo], backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], borderWidth: 2 }] },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'bottom' } } }
+            }));
+        }
+
         function renderAdmin() {
             const summary = getAdminSummaryData();
             document.getElementById('admin-summary-area').innerHTML = `
@@ -1653,6 +1791,9 @@
             cycleSelect.innerHTML = db.cycles.map(c => `<option value="${c}" ${c === db.activeCycle ? 'selected' : ''}>${c}</option>`).join('');
             document.getElementById('label-active-cycle').textContent = `Ciclo: ${db.activeCycle}`;
             renderCycleHistory();
+            const schoolPeriodSelect = document.getElementById('admin-school-analysis-period');
+            if (schoolPeriodSelect) schoolPeriodSelect.value = schoolAnalysisPeriod;
+            renderSchoolAnalysis(schoolAnalysisPeriod);
             
             renderTeachersList();
             renderStudentManagementPanel();
