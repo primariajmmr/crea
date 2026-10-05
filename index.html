@@ -454,6 +454,7 @@
                     <p class="text-sm font-medium text-slate-500 mt-1" id="table-head-3"></p>
                 </div>
                 <div class="flex flex-wrap gap-2">
+                    <button id="project-save-block-btn" onclick="saveProjectBlock()" class="hidden px-3 py-2 bg-emerald-600 text-white border border-emerald-600 rounded-lg text-sm font-bold hover:bg-emerald-700 transition" title="Guardar bloque de calificaciones">Guardar cambios</button>
                     <button onclick="focusNextEmptyGrade()" class="px-3 py-2 bg-indigo-600 text-white border border-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-700 transition" title="Siguiente calificación pendiente"><i class="fa-solid fa-forward-step mr-1"></i> Siguiente vacío</button>
                     <button onclick="exportProjectPDF()" class="px-3 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-sm font-bold hover:bg-rose-100 transition" title="Exportar PDF"><i class="fa-solid fa-file-pdf"></i> PDF</button>
                     <button onclick="exportProjectExcel()" class="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm font-bold hover:bg-emerald-100 transition" title="Exportar Excel"><i class="fa-solid fa-file-excel"></i> Excel</button>
@@ -820,7 +821,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = 'v16.6';
+        const APP_VERSION = 'v16.8';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -1188,6 +1189,15 @@
 
         // --- STREAMING_CHUNK:Navigation ---
         function navigate(viewId) {
+            if (projectDirty && viewId !== 'project-table') {
+                confirmProjectExit(() => performNavigate(viewId));
+                return;
+            }
+
+            performNavigate(viewId);
+        }
+
+        function performNavigate(viewId) {
             // Ocultar vistas
             document.querySelectorAll('main > div').forEach(el => el.classList.add('hidden'));
             let targetView = document.getElementById('view-' + viewId);
@@ -1371,6 +1381,28 @@
         }
 
         function logout() {
+            if (projectDirty) {
+                confirmProjectExit(() => {
+                    session = { 
+                        userId: null, 
+                        username: null, 
+                        role: null, 
+                        teacherId: null, // Para compatibilidad con código existente
+                        targetView: null, 
+                        currentProjectId: null, 
+                        currentEvalPeriod: null, 
+                        editingProjectId: null,
+                        group: null,
+                        cycle: null,
+                        loginTime: null,
+                        permissions: []
+                    };
+                    document.getElementById('user-info').classList.add('hidden');
+                    navigate('menu');
+                });
+                return;
+            }
+
             session = { 
                 userId: null, 
                 username: null, 
@@ -3631,6 +3663,38 @@
         }
 
         // --- STREAMING_CHUNK:Project Table Engine ---
+        let projectDirty = false;
+
+        function setProjectDirtyState(isDirty) {
+            projectDirty = Boolean(isDirty);
+            const btn = document.getElementById('project-save-block-btn');
+            if (btn) btn.classList.toggle('hidden', !projectDirty);
+        }
+
+        async function saveProjectBlock() {
+            const proj = db.projects && session.currentProjectId ? db.projects.find(p => p.id === session.currentProjectId) : null;
+            if (!proj || !projectDirty) {
+                setProjectDirtyState(false);
+                return true;
+            }
+
+            const result = await saveDb();
+            setProjectDirtyState(false);
+            return Boolean(result);
+        }
+
+        function confirmProjectExit(nextAction) {
+            if (!projectDirty) {
+                if (typeof nextAction === 'function') nextAction();
+                return;
+            }
+
+            appConfirm('Guardar y salir', async () => {
+                await saveProjectBlock();
+                if (typeof nextAction === 'function') nextAction();
+            });
+        }
+
         function focusNextEmptyGrade() {
             const inputs = Array.from(document.querySelectorAll('#main-project-table input.input-grade:not([disabled])'));
             if (!inputs.length) {
@@ -3652,6 +3716,7 @@
 
         function openProject(pid) {
             session.currentProjectId = pid;
+            setProjectDirtyState(false);
             let proj = db.projects.find(p => p.id === pid);
             let teacher = db.teachers.find(t => t.id === proj.teacherId)
                 || db.teachers.find(t => t.username === proj.teacherUsername || t.name === proj.teacherName)
@@ -3754,6 +3819,7 @@
 
             html += `</tbody></table>`;
             document.getElementById('table-render-area').innerHTML = html;
+            setProjectDirtyState(false);
             
             // Post render calculations
             teacher.students.forEach(stu => recalcRow(stu.id));
@@ -3783,7 +3849,7 @@
             }
 
             proj.grades[stuId].extraIndicators[extraIndex][indicatorIndex] = validation.value;
-            saveDb();
+            setProjectDirtyState(true);
             recalcRow(stuId);
         }
 
@@ -3798,7 +3864,7 @@
             
             if(index !== null) proj.grades[stuId][category][index] = validation.value;
             
-            saveDb();
+            setProjectDirtyState(true);
             recalcRow(stuId);
         }
 
