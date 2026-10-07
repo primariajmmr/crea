@@ -739,7 +739,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
-        import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
+        import { getFirestore, doc, collection, getDoc, getDocs, writeBatch } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCwHIJopCzHY-BJQ7LXwWxKjBlr7RzHAiU",
@@ -753,7 +753,305 @@
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
         const firestore = getFirestore(app);
-        const appStateRef = doc(firestore, 'app_state', 'main');
+        const legacyAppStateRef = doc(firestore, 'app_state', 'main');
+        const configurationRef = doc(firestore, 'app_config', 'general');
+        let cachedDocumentPayloads = new Map();
+
+        const safeDocumentId = value => `id_${encodeURIComponent(String(value || 'sin-id'))}`;
+        const appDocument = path => doc(firestore, path);
+        const stableStringify = value => {
+            if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+            if (value && typeof value === 'object') {
+                return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+            }
+            return JSON.stringify(value);
+        };
+
+        function buildFirestoreDocuments(payload) {
+            const entries = new Map();
+            const cycles = Array.isArray(payload.cycles) ? [...payload.cycles] : [];
+            if (payload.activeCycle && !cycles.includes(payload.activeCycle)) cycles.push(payload.activeCycle);
+            const teachers = Array.isArray(payload.teachers) ? payload.teachers : [];
+            const users = Array.isArray(payload.users) ? payload.users : [];
+            teachers.forEach(teacher => {
+                if (teacher.cycle && !cycles.includes(teacher.cycle)) cycles.push(teacher.cycle);
+            });
+            (Array.isArray(payload.projects) ? payload.projects : []).forEach(project => {
+                if (project.cycle && !cycles.includes(project.cycle)) cycles.push(project.cycle);
+            });
+            const configPayload = {
+                schemaVersion: 2,
+                schoolName: payload.schoolName || '',
+                cct: payload.cct || '',
+                directorName: payload.directorName || '',
+                cycles,
+                activeCycle: payload.activeCycle || cycles[0] || '',
+                users,
+                meta: payload.meta || {}
+            };
+            entries.set(configurationRef.path, { payload: sanitizeForFirestore(configPayload) });
+
+            cycles.forEach(cycle => {
+                const cycleId = safeDocumentId(cycle);
+                const cycleRef = appDocument(`cycles/${cycleId}`);
+                entries.set(cycleRef.path, { payload: { cycleId: String(cycle) } });
+            });
+
+            const assignedProjectIds = new Set();
+            const assignedStudentIds = new Set();
+            const assignedTeacherIds = new Set();
+            teachers.forEach(teacher => {
+                const cycle = teacher.cycle || configPayload.activeCycle || 'sin-ciclo';
+                assignedTeacherIds.add(String(teacher.id || ''));
+                const cycleId = safeDocumentId(cycle);
+                const teacherId = safeDocumentId(teacher.id);
+                const teacherRef = appDocument(`cycles/${cycleId}/teachers/${teacherId}`);
+                entries.set(teacherRef.path, {
+                    payload: sanitizeForFirestore(teacher),
+                    cycleId: String(cycle),
+                    teacherId: String(teacher.id || '')
+                });
+
+                const students = Array.isArray(teacher.students) ? teacher.students : [];
+                const studentIds = students.map(student => String(student.id || '')).filter(Boolean);
+                studentIds.forEach(studentId => assignedStudentIds.add(studentId));
+                const projects = (Array.isArray(payload.projects) ? payload.projects : [])
+                    .filter(project =>
+                        project.teacherId != null
+                        && String(project.teacherId) === String(teacher.id || '')
+                        && (!project.cycle || String(project.cycle) === String(cycle))
+                    );
+                const periods = new Set(projects.map(project => String(project.periodo || 'Sin periodo')));
+                const periodMaps = [
+                    ...studentIds.map(studentId => payload.evalData?.[studentId]),
+                    payload.peData?.[teacher.id],
+                    payload.lectoData?.[teacher.id],
+                    payload.groupObservations?.[teacher.id],
+                    ...studentIds.map(studentId => payload.studentObservations?.[studentId])
+                ];
+                periodMaps.forEach(periodMap => {
+                    if (periodMap && typeof periodMap === 'object') {
+                        Object.keys(periodMap).forEach(period => periods.add(String(period)));
+                    }
+                });
+
+                periods.forEach(period => {
+                    const periodId = safeDocumentId(period);
+                    const periodRef = appDocument(`cycles/${cycleId}/teachers/${teacherId}/periods/${periodId}`);
+                    const evalData = {};
+                    const studentObservations = {};
+                    studentIds.forEach(studentId => {
+                        const evalValue = payload.evalData?.[studentId]?.[period];
+                        if (evalValue !== undefined) {
+                            if (!evalData[studentId]) evalData[studentId] = {};
+                            evalData[studentId][period] = evalValue;
+                        }
+                        const observation = payload.studentObservations?.[studentId]?.[period];
+                        if (observation !== undefined) studentObservations[studentId] = observation;
+                    });
+                    const periodPayload = {
+                        period,
+                        evalData,
+                        studentObservations
+                    };
+                    const peData = payload.peData?.[teacher.id]?.[period];
+                    const lectoData = payload.lectoData?.[teacher.id]?.[period];
+                    const groupObservation = payload.groupObservations?.[teacher.id]?.[period];
+                    if (peData !== undefined) periodPayload.peData = peData;
+                    if (lectoData !== undefined) periodPayload.lectoData = lectoData;
+                    if (groupObservation !== undefined) periodPayload.groupObservation = groupObservation;
+                    entries.set(periodRef.path, { payload: sanitizeForFirestore(periodPayload) });
+
+                    projects.filter(project => String(project.periodo || 'Sin periodo') === period).forEach(project => {
+                        const projectId = safeDocumentId(project.id);
+                        const projectRef = appDocument(`${periodRef.path}/projects/${projectId}`);
+                        entries.set(projectRef.path, { payload: sanitizeForFirestore(project) });
+                        assignedProjectIds.add(String(project.id || ''));
+                    });
+                });
+            });
+
+            const orphanCycle = safeDocumentId(configPayload.activeCycle || cycles[0] || 'sin-ciclo');
+            const orphanPeriods = new Map();
+            const getOrphanPeriod = period => {
+                const key = String(period);
+                if (!orphanPeriods.has(key)) {
+                    orphanPeriods.set(key, {
+                        period: key,
+                        evalData: {},
+                        peData: {},
+                        lectoData: {},
+                        studentObservations: {},
+                        groupObservations: {}
+                    });
+                }
+                return orphanPeriods.get(key);
+            };
+            Object.entries(payload.evalData || {}).forEach(([studentId, periods]) => {
+                if (assignedStudentIds.has(studentId)) return;
+                Object.entries(periods || {}).forEach(([period, value]) => {
+                    getOrphanPeriod(period).evalData[studentId] = { [period]: value };
+                });
+            });
+            Object.entries(payload.studentObservations || {}).forEach(([studentId, periods]) => {
+                if (assignedStudentIds.has(studentId)) return;
+                Object.entries(periods || {}).forEach(([period, value]) => {
+                    getOrphanPeriod(period).studentObservations[studentId] = value;
+                });
+            });
+            [
+                ['peData', payload.peData],
+                ['lectoData', payload.lectoData],
+                ['groupObservations', payload.groupObservations]
+            ].forEach(([field, records]) => {
+                Object.entries(records || {}).forEach(([teacherId, periods]) => {
+                    if (assignedTeacherIds.has(String(teacherId))) return;
+                    Object.entries(periods || {}).forEach(([period, value]) => {
+                        const orphanPeriod = getOrphanPeriod(period);
+                        if (field === 'groupObservations') orphanPeriod.groupObservations[teacherId] = value;
+                        else orphanPeriod[field][teacherId] = value;
+                    });
+                });
+            });
+            orphanPeriods.forEach((orphanPeriod, period) => {
+                const orphanRef = appDocument(`cycles/${orphanCycle}/orphanedPeriods/${safeDocumentId(period)}`);
+                entries.set(orphanRef.path, { payload: sanitizeForFirestore(orphanPeriod) });
+            });
+
+            (Array.isArray(payload.projects) ? payload.projects : []).forEach(project => {
+                if (assignedProjectIds.has(String(project.id || ''))) return;
+                const cycle = project.cycle || configPayload.activeCycle || 'sin-ciclo';
+                const projectRef = appDocument(`cycles/${safeDocumentId(cycle)}/projects/${safeDocumentId(project.id)}`);
+                entries.set(projectRef.path, { payload: sanitizeForFirestore(project) });
+            });
+            return entries;
+        }
+
+        async function loadSplitAppData(configurationSnapshot) {
+            const configuration = restoreFromFirestore(configurationSnapshot.data()?.payload || {});
+            if (configuration.schemaVersion !== 2) {
+                throw new Error('La configuración de Firestore tiene una versión de esquema no compatible.');
+            }
+
+            const result = {
+                schoolName: configuration.schoolName,
+                cct: configuration.cct,
+                directorName: configuration.directorName,
+                cycles: configuration.cycles || [],
+                activeCycle: configuration.activeCycle,
+                users: configuration.users || [],
+                teachers: [],
+                projects: [],
+                evalData: {},
+                peData: {},
+                lectoData: {},
+                studentObservations: {},
+                groupObservations: {},
+                meta: configuration.meta || {}
+            };
+            const loadedPayloads = new Map([[configurationRef.path, configurationSnapshot.data()]]);
+
+            for (const cycle of result.cycles) {
+                const cycleId = safeDocumentId(cycle);
+                const cycleRef = appDocument(`cycles/${cycleId}`);
+                const [cycleSnapshot, teacherSnapshots, unassignedProjects, orphanedPeriodSnapshots] = await Promise.all([
+                    getDoc(cycleRef),
+                    getDocs(collection(cycleRef, 'teachers')),
+                    getDocs(collection(cycleRef, 'projects')),
+                    getDocs(collection(cycleRef, 'orphanedPeriods'))
+                ]);
+                if (cycleSnapshot.exists()) loadedPayloads.set(cycleRef.path, cycleSnapshot.data());
+
+                const teacherData = await Promise.all(teacherSnapshots.docs.map(async teacherSnapshot => {
+                    const teacherDocument = teacherSnapshot.data();
+                    const teacher = restoreFromFirestore(teacherDocument.payload || {});
+                    if (!teacher.id) teacher.id = teacherDocument.teacherId || teacherSnapshot.id;
+                    if (!teacher.cycle) teacher.cycle = cycle;
+                    const periodSnapshots = await getDocs(collection(teacherSnapshot.ref, 'periods'));
+                    const periods = await Promise.all(periodSnapshots.docs.map(async periodSnapshot => {
+                        const periodDocument = periodSnapshot.data();
+                        const periodData = restoreFromFirestore(periodDocument.payload || {});
+                        const period = String(periodData.period || periodSnapshot.id);
+                        const projectSnapshots = await getDocs(collection(periodSnapshot.ref, 'projects'));
+                        const projects = projectSnapshots.docs.map(projectSnapshot => {
+                            const projectDocument = projectSnapshot.data();
+                            loadedPayloads.set(projectSnapshot.ref.path, projectDocument);
+                            return restoreFromFirestore(projectDocument.payload || {});
+                        });
+                        loadedPayloads.set(periodSnapshot.ref.path, periodDocument);
+                        return { period, periodData, projects };
+                    }));
+                    loadedPayloads.set(teacherSnapshot.ref.path, teacherDocument);
+                    return { teacher, periods };
+                }));
+
+                teacherData.forEach(({ teacher, periods }) => {
+                    result.teachers.push(teacher);
+                    periods.forEach(({ period, periodData, projects }) => {
+                        Object.entries(periodData.evalData || {}).forEach(([studentId, periodValues]) => {
+                            result.evalData[studentId] = { ...(result.evalData[studentId] || {}), ...periodValues };
+                        });
+                        if (periodData.peData !== undefined) {
+                            result.peData[teacher.id] = { ...(result.peData[teacher.id] || {}), [period]: periodData.peData };
+                        }
+                        if (periodData.lectoData !== undefined) {
+                            result.lectoData[teacher.id] = { ...(result.lectoData[teacher.id] || {}), [period]: periodData.lectoData };
+                        }
+                        Object.entries(periodData.studentObservations || {}).forEach(([studentId, observation]) => {
+                            result.studentObservations[studentId] = {
+                                ...(result.studentObservations[studentId] || {}),
+                                [period]: observation
+                            };
+                        });
+                        if (periodData.groupObservation !== undefined) {
+                            result.groupObservations[teacher.id] = {
+                                ...(result.groupObservations[teacher.id] || {}),
+                                [period]: periodData.groupObservation
+                            };
+                        }
+                        result.projects.push(...projects);
+                    });
+                });
+
+                unassignedProjects.docs.forEach(projectSnapshot => {
+                    const projectDocument = projectSnapshot.data();
+                    result.projects.push(restoreFromFirestore(projectDocument.payload || {}));
+                    loadedPayloads.set(projectSnapshot.ref.path, projectDocument);
+                });
+                orphanedPeriodSnapshots.docs.forEach(periodSnapshot => {
+                    const periodDocument = periodSnapshot.data();
+                    const periodData = restoreFromFirestore(periodDocument.payload || {});
+                    const period = String(periodData.period || periodSnapshot.id);
+                    Object.entries(periodData.evalData || {}).forEach(([studentId, periodValues]) => {
+                        result.evalData[studentId] = { ...(result.evalData[studentId] || {}), ...periodValues };
+                    });
+                    Object.entries(periodData.peData || {}).forEach(([teacherId, value]) => {
+                        result.peData[teacherId] = { ...(result.peData[teacherId] || {}), [period]: value };
+                    });
+                    Object.entries(periodData.lectoData || {}).forEach(([teacherId, value]) => {
+                        result.lectoData[teacherId] = { ...(result.lectoData[teacherId] || {}), [period]: value };
+                    });
+                    Object.entries(periodData.studentObservations || {}).forEach(([studentId, observation]) => {
+                        result.studentObservations[studentId] = {
+                            ...(result.studentObservations[studentId] || {}),
+                            [period]: observation
+                        };
+                    });
+                    Object.entries(periodData.groupObservations || {}).forEach(([teacherId, observation]) => {
+                        result.groupObservations[teacherId] = {
+                            ...(result.groupObservations[teacherId] || {}),
+                            [period]: observation
+                        };
+                    });
+                    loadedPayloads.set(periodSnapshot.ref.path, periodDocument);
+                });
+            }
+            cachedDocumentPayloads = new Map([...loadedPayloads].map(([path, documentData]) => [
+                path,
+                stableStringify(documentData?.payload)
+            ]));
+            return result;
+        }
 
         const emitStatus = (text, tone = 'neutral') => {
             window.dispatchEvent(new CustomEvent('firebase-status', { detail: { text, tone } }));
@@ -775,7 +1073,7 @@
             emitStatus('Firebase: conectando...', 'neutral');
             try {
                 await ensureFirebaseAuth();
-                await getDoc(appStateRef);
+                await getDoc(configurationRef);
                 emitStatus('Firebase: conectado', 'ok');
             } catch (err) {
                 console.error('Firebase init check failed:', err);
@@ -787,14 +1085,23 @@
         window.addEventListener('online', () => emitStatus('Firebase: reconectando...', 'neutral'));
 
         window.firebaseBridge = {
+            migrationNeeded: false,
             waitUntilReady: () => bridgeReady,
             async loadAppData() {
                 try {
                     await ensureFirebaseAuth();
-                    const snap = await getDoc(appStateRef);
+                    const configurationSnapshot = await getDoc(configurationRef);
+                    if (configurationSnapshot.exists()) {
+                        const payload = await loadSplitAppData(configurationSnapshot);
+                        emitStatus('Firebase: conectado', 'ok');
+                        return payload;
+                    }
+                    const snap = await getDoc(legacyAppStateRef);
                     emitStatus('Firebase: conectado', 'ok');
                     if (!snap.exists()) return null;
                     const payload = snap.data() && snap.data().payload;
+                    cachedDocumentPayloads = new Map();
+                    window.firebaseBridge.migrationNeeded = Boolean(payload && typeof payload === 'object');
                     return payload && typeof payload === 'object' ? restoreFromFirestore(payload) : null;
                 } catch (err) {
                     console.error('Firebase load failed:', err);
@@ -805,8 +1112,33 @@
             async saveAppData(payload) {
                 try {
                     await ensureFirebaseAuth();
-                    const safePayload = sanitizeForFirestore(payload);
-                    await setDoc(appStateRef, { payload: safePayload, updatedAt: serverTimestamp() }, { merge: true });
+                    const entries = buildFirestoreDocuments(payload);
+                    const changedEntries = [...entries].filter(([path, documentData]) =>
+                        cachedDocumentPayloads.get(path) !== stableStringify(documentData.payload)
+                    );
+                    const deletedPaths = [...cachedDocumentPayloads.keys()].filter(path => !entries.has(path));
+                    const configEntry = changedEntries.find(([path]) => path === configurationRef.path);
+                    const writes = changedEntries.filter(([path]) => path !== configurationRef.path);
+                    if (configEntry) writes.push(configEntry);
+
+                    const operations = [
+                        ...writes.map(([path, documentData]) => ({ type: 'set', path, documentData })),
+                        ...deletedPaths.map(path => ({ type: 'delete', path }))
+                    ];
+                    for (let offset = 0; offset < operations.length; offset += 450) {
+                        const batch = writeBatch(firestore);
+                        operations.slice(offset, offset + 450).forEach(operation => {
+                            const ref = appDocument(operation.path);
+                            if (operation.type === 'set') batch.set(ref, operation.documentData);
+                            else batch.delete(ref);
+                        });
+                        await batch.commit();
+                    }
+                    cachedDocumentPayloads = new Map([...entries].map(([path, documentData]) => [
+                        path,
+                        stableStringify(documentData.payload)
+                    ]));
+                    window.firebaseBridge.migrationNeeded = false;
                     emitStatus('Firebase: conectado', 'ok');
                     return true;
                 } catch (err) {
@@ -821,7 +1153,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = 'v16.8';
+        const APP_VERSION = 'v16.9';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -998,6 +1330,7 @@
             if (value === null || value === undefined) return value;
             if (Array.isArray(value)) {
                 return value.map(item => {
+                    if (item === undefined) return null;
                     if (Array.isArray(item)) {
                         return { __firestore_nested_array__: JSON.stringify(item) };
                     }
@@ -1008,7 +1341,7 @@
             if (isPlainObject(value)) {
                 const clean = {};
                 Object.keys(value).forEach(key => {
-                    clean[key] = sanitizeForFirestore(value[key]);
+                    if (value[key] !== undefined) clean[key] = sanitizeForFirestore(value[key]);
                 });
                 return clean;
             }
@@ -1108,7 +1441,7 @@
                 savePending = false;
                 try {
                     setFirebaseStatusLabel('Firebase: guardando...', 'neutral');
-                    const remotePayload = await window.firebaseBridge.loadAppData().catch(() => null);
+                    const remotePayload = await window.firebaseBridge.loadAppData();
                     const payloadToSave = mergeDbPayload(remotePayload, db);
                     payloadToSave.meta = payloadToSave.meta || {};
                     payloadToSave.meta.revision = Math.max(Number(payloadToSave.meta.revision) || 0, Number(db?.meta?.revision) || 0);
@@ -1120,9 +1453,8 @@
                 } catch (err) {
                     console.warn('Fallo al guardar en Firebase:', err);
                     setFirebaseStatusLabel('Firebase: error de guardado', 'error');
-                    try {
-                        appAlert('No se pudo guardar en Firebase. Revisa las reglas de Firestore y la conexión.');
-                    } catch (e) {}
+                    const code = err?.code ? ` (${err.code})` : '';
+                    appAlert(`No se pudo guardar en Firebase${code}: ${err?.message || 'Revisa las reglas de Firestore y la conexión.'}`);
                 }
             } while (savePending);
             saveInFlight = false;
@@ -1171,6 +1503,10 @@
             if(!db.teachers) db.teachers = [];
             
             db.teachers.forEach(t => { if(!t.cycle) t.cycle = db.activeCycle; });
+
+            if (window.firebaseBridge?.migrationNeeded) {
+                await persistDbToFirebase();
+            }
             
             document.getElementById('header-school-name').innerHTML = '<span class="block text-[11px] md:text-base font-black tracking-[0.14em] uppercase text-slate-700">CONTROL Y REGISTRO</span><span class="block text-[11px] md:text-base font-black tracking-[0.14em] uppercase text-slate-700 mt-0.5">DE EVALUACIONES Y AVANCES</span>';
             navigate('menu');
