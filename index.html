@@ -1153,7 +1153,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = 'v16.9';
+        const APP_VERSION = 'v17.0';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -1332,7 +1332,7 @@
                 return value.map(item => {
                     if (item === undefined) return null;
                     if (Array.isArray(item)) {
-                        return { __firestore_nested_array__: JSON.stringify(item) };
+                        return { firestoreNestedArrayJson: JSON.stringify(item) };
                     }
                     return sanitizeForFirestore(item);
                 });
@@ -1352,11 +1352,14 @@
             if (value === null || value === undefined) return value;
             if (Array.isArray(value)) return value.map(item => restoreFromFirestore(item));
             if (isPlainObject(value)) {
-                if (Object.keys(value).length === 1 && Object.prototype.hasOwnProperty.call(value, '__firestore_nested_array__') && typeof value.__firestore_nested_array__ === 'string') {
+                const nestedArrayField = Object.prototype.hasOwnProperty.call(value, 'firestoreNestedArrayJson')
+                    ? 'firestoreNestedArrayJson'
+                    : '__firestore_nested_array__';
+                if (Object.keys(value).length === 1 && typeof value[nestedArrayField] === 'string') {
                     try {
-                        return JSON.parse(value.__firestore_nested_array__);
+                        return JSON.parse(value[nestedArrayField]);
                     } catch (err) {
-                        return value.__firestore_nested_array__;
+                        return value[nestedArrayField];
                     }
                 }
                 const restored = {};
