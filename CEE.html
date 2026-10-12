@@ -4770,7 +4770,7 @@
                                     ? selectedSectionTitle ? 'h-auto min-h-[80px] items-start' : 'h-[80px] justify-center'
                                     : 'md:flex-row md:items-center md:justify-between'
                             }`}>
-                                <div>
+                                <div className="w-full">
                                     {currentView !== 'menu' && (
                                         <>
                                             <h1 className="text-xl font-extrabold tracking-tight text-slate-800 md:text-2xl">
@@ -4795,7 +4795,7 @@
                                     )}
                                     {(currentView === 'menu' || currentView === 'student-search') && (
                                         <>
-                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-5" aria-label="Secciones principales">
+                                        <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-3 md:grid-cols-5" aria-label="Secciones principales">
                                             {navigationSections.map(section => {
                                                 const isSelected = section.view
                                                     ? currentView === section.view
@@ -4832,7 +4832,7 @@
                                         {selectedNavigationItems && (
                                             <div
                                                 aria-label={`Opciones de ${selectedSectionTitle}`}
-                                                className="mt-1 flex flex-wrap gap-2"
+                                                className="mt-1 flex w-full flex-wrap gap-2"
                                             >
                                                 {selectedNavigationItems.map(item => (
                                                     <button
