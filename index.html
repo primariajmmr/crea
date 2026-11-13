@@ -1160,7 +1160,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = 'v17.0';
+        const APP_VERSION = 'v17.1';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -6875,19 +6875,27 @@
                     let bodyData = [];
                     CAMPOS_FORMATIVOS.forEach(campo => {
                         let teacherProjs = getTeacherProjectsForSession().filter(p => p.periodo === periodo && p.campo === campo);
-                        let campoTotal = [];
 
                         teacherProjs.forEach(p => {
                             let val = calcProjectFinalScore(p, stu.id);
                             if(val !== null) {
                                 bodyData.push([campo, p.nombre, truncateToOne(val).toFixed(1)]);
-                                campoTotal.push(val);
                             }
                         });
 
-                        if(campoTotal.length > 0) {
-                            let avg = avgArr(campoTotal);
-                            bodyData.push([{ content: `PROMEDIO ${campo.toUpperCase()}`, colSpan: 2, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }, { content: truncateToOne(avg).toFixed(1), styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }]);
+                        if (campo === 'De lo Humano y lo Comunitario') {
+                            const peGrade = getPhysicalEducationGrade(stu.id, periodo);
+                            if (peGrade !== null) {
+                                bodyData.push([campo, 'Educación Física', truncateToOne(peGrade).toFixed(1)]);
+                            }
+                        }
+
+                        const finalAverage = getCampoWithPEAverage(stu.id, periodo, campo);
+                        if (finalAverage !== null) {
+                            const label = campo === 'De lo Humano y lo Comunitario'
+                                ? `PROMEDIO FINAL ${campo.toUpperCase()}`
+                                : `PROMEDIO ${campo.toUpperCase()}`;
+                            bodyData.push([{ content: label, colSpan: 2, styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }, { content: truncateToOne(finalAverage).toFixed(1), styles: { fontStyle: 'bold', fillColor: [240, 240, 240] } }]);
                         }
                     });
 
