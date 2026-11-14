@@ -248,7 +248,7 @@
                     <p class="text-slate-500 text-sm mt-1" id="teacher-view-subtitle"></p>
                 </div>
                 <button id="admin-return-button" onclick="navigate('admin')" class="hidden px-4 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl text-sm font-bold hover:bg-indigo-100 transition border border-indigo-200"><i class="fa-solid fa-arrow-left mr-1"></i> Volver a Administración</button>
-                <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-2 w-full">
+                <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 w-full">
                     <button onclick="navigate('student-history')" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
                         <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-violet-100 text-violet-700 text-base"><i class="fa-solid fa-user-graduate"></i></span>
                         <span class="text-sm font-bold text-slate-900">Vista Alumno/Grupo</span>
@@ -273,12 +273,98 @@
                         <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 text-base"><i class="fa-solid fa-sitemap"></i></span>
                         <span class="text-sm font-bold text-slate-900">SIIE</span>
                     </button>
+                    <button onclick="navigate('reports')" class="group flex items-center justify-center gap-2 bg-white rounded-2xl border border-indigo-200 shadow-sm hover:shadow-md transition px-4 py-3 min-h-[60px]">
+                        <span class="flex h-9 w-9 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-700 text-base"><i class="fa-solid fa-file-arrow-down"></i></span>
+                        <span class="text-sm font-bold text-slate-900">Reportes y descargas</span>
+                    </button>
                 </div>
             </div>
 
             <div id="teacher-summary-area" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 mb-6"></div>
             <div id="teacher-alerts-list" class="mb-6"></div>
 
+        </div>
+
+        <div id="view-reports" class="hidden fade-in w-full max-w-none mx-auto space-y-6">
+            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div>
+                    <h2 class="text-2xl font-bold text-slate-800 flex items-center gap-2"><i class="fa-solid fa-file-arrow-down text-indigo-500"></i> Reportes y descargas</h2>
+                    <p class="text-slate-500 text-sm mt-1">Accesos organizados por tipo de información y formato.</p>
+                </div>
+                <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200"><i class="fa-solid fa-arrow-left mr-1"></i> Volver al Panel Docente</button>
+            </div>
+
+            <div class="bg-indigo-50 border border-indigo-100 rounded-xl px-5 py-3 text-sm text-indigo-900">
+                Los reportes se organizan por tema. Al abrir cada módulo, selecciona el periodo, alumno, proyecto o campo antes de descargar para conservar el mismo contenido y formato.
+            </div>
+
+            <div class="grid grid-cols-1 xl:grid-cols-3 gap-5">
+                <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                    <div class="border-b border-slate-200 pb-3">
+                        <h3 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-clipboard-check mr-2 text-blue-500"></i>Evaluación y observaciones</h3>
+                        <p class="text-xs text-slate-500 mt-1">Reportes vinculados al periodo seleccionado.</p>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-4">
+                        <h4 class="font-bold text-sm text-slate-800">Evaluación escolar</h4>
+                        <p class="text-xs text-slate-500 mt-1">Tabla de evaluación en PDF y análisis de resultados en PDF.</p>
+                        <button onclick="openReportsEvaluation()" class="mt-3 px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-sm font-bold hover:bg-indigo-100 transition">Abrir periodos y reportes</button>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-4">
+                        <h4 class="font-bold text-sm text-slate-800">Observaciones</h4>
+                        <p class="text-xs text-slate-500 mt-1">Descarga las observaciones grupales e individuales en Excel o PDF.</p>
+                        <button onclick="openReportsEvaluation()" class="mt-3 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm font-bold hover:bg-emerald-100 transition">Ir a Descargar observaciones</button>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-4">
+                        <h4 class="font-bold text-sm text-slate-800">Avance de los Aprendizajes</h4>
+                        <p class="text-xs text-slate-500 mt-1">Tabla PDF y reporte PDF grupal, de todos los alumnos o de un alumno.</p>
+                        <button onclick="openReportsAdvance()" class="mt-3 px-4 py-2 bg-violet-50 text-violet-700 border border-violet-200 rounded-lg text-sm font-bold hover:bg-violet-100 transition">Abrir reportes de avance</button>
+                    </div>
+                </section>
+
+                <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                    <div class="border-b border-slate-200 pb-3">
+                        <h3 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-layer-group mr-2 text-violet-500"></i>Proyectos y concentrados</h3>
+                        <p class="text-xs text-slate-500 mt-1">Elige primero el proyecto, periodo y campo a incluir.</p>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-4">
+                        <h4 class="font-bold text-sm text-slate-800">Proyecto escolar</h4>
+                        <p class="text-xs text-slate-500 mt-1">Exporta el registro del proyecto seleccionado en PDF o Excel.</p>
+                        <button onclick="navigate('proyectos-escolares')" class="mt-3 px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-sm font-bold hover:bg-indigo-100 transition">Elegir proyecto y descargar</button>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-4">
+                        <h4 class="font-bold text-sm text-slate-800">Concentrado del periodo</h4>
+                        <p class="text-xs text-slate-500 mt-1">Exporta los concentrados por campo formativo en PDF o Excel.</p>
+                        <button onclick="navigate('concentrado')" class="mt-3 px-4 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm font-bold hover:bg-emerald-100 transition">Abrir concentrados</button>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-4">
+                        <h4 class="font-bold text-sm text-slate-800">Reportes Individuales</h4>
+                        <p class="text-xs text-slate-500 mt-1">Genera el PDF con los reportes de todos los alumnos.</p>
+                        <button onclick="navigate('concentrado')" class="mt-3 px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-sm font-bold hover:bg-indigo-100 transition">Abrir Reportes Individuales</button>
+                    </div>
+                </section>
+
+                <section class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                    <div class="border-b border-slate-200 pb-3">
+                        <h3 class="text-lg font-bold text-slate-800"><i class="fa-solid fa-user-graduate mr-2 text-rose-500"></i>Alumnos y áreas</h3>
+                        <p class="text-xs text-slate-500 mt-1">Reportes individuales y de seguimiento por área.</p>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-4">
+                        <h4 class="font-bold text-sm text-slate-800">Historial consolidado del alumno</h4>
+                        <p class="text-xs text-slate-500 mt-1">Selecciona un alumno o todo el grupo para generar el reporte PDF.</p>
+                        <button onclick="navigate('student-history')" class="mt-3 px-4 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-sm font-bold hover:bg-rose-100 transition">Elegir alumno y generar PDF</button>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-4">
+                        <h4 class="font-bold text-sm text-slate-800">Niveles de Lectoescritura</h4>
+                        <p class="text-xs text-slate-500 mt-1">Selecciona el periodo y genera el reporte PDF del grupo.</p>
+                        <button onclick="navigate('lectoescritura')" class="mt-3 px-4 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-sm font-bold hover:bg-rose-100 transition">Abrir Lectoescritura</button>
+                    </div>
+                    <div class="rounded-xl border border-slate-200 p-4">
+                        <h4 class="font-bold text-sm text-slate-800">Educación Física</h4>
+                        <p class="text-xs text-slate-500 mt-1">Acceso a la captura y consulta actual del área.</p>
+                        <button onclick="navigate('educ-fisica')" class="mt-3 px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-sm font-bold hover:bg-amber-100 transition">Abrir Educación Física</button>
+                    </div>
+                </section>
+            </div>
         </div>
 
         <div id="view-proyectos-escolares" class="hidden fade-in w-full max-w-none mx-auto space-y-6">
@@ -460,11 +546,15 @@
                     <h3 class="text-lg font-black text-indigo-600 mt-1" id="table-head-2"></h3>
                     <p class="text-sm font-medium text-slate-500 mt-1" id="table-head-3"></p>
                 </div>
-                <div class="flex flex-wrap gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-bold uppercase tracking-wide text-slate-400 mr-1">Captura</span>
                     <button id="project-save-block-btn" onclick="saveProjectBlock()" class="hidden px-3 py-2 bg-emerald-600 text-white border border-emerald-600 rounded-lg text-sm font-bold hover:bg-emerald-700 transition" title="Guardar bloque de calificaciones">Guardar cambios</button>
                     <button onclick="focusNextEmptyGrade()" class="px-3 py-2 bg-indigo-600 text-white border border-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-700 transition" title="Siguiente calificación pendiente"><i class="fa-solid fa-forward-step mr-1"></i> Siguiente vacío</button>
-                    <button onclick="exportProjectPDF()" class="px-3 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-sm font-bold hover:bg-rose-100 transition" title="Exportar PDF"><i class="fa-solid fa-file-pdf"></i> PDF</button>
-                    <button onclick="exportProjectExcel()" class="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm font-bold hover:bg-emerald-100 transition" title="Exportar Excel"><i class="fa-solid fa-file-excel"></i> Excel</button>
+                    <span class="h-7 border-l border-slate-300 mx-1"></span>
+                    <span class="text-xs font-bold uppercase tracking-wide text-slate-400 mr-1">Descargas</span>
+                    <button onclick="exportProjectPDF()" class="px-3 py-2 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-sm font-bold hover:bg-rose-100 transition" title="Exportar tabla del proyecto en PDF"><i class="fa-solid fa-file-pdf mr-1"></i> Proyecto PDF</button>
+                    <button onclick="exportProjectExcel()" class="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm font-bold hover:bg-emerald-100 transition" title="Exportar tabla del proyecto en Excel"><i class="fa-solid fa-file-excel mr-1"></i> Proyecto Excel</button>
+                    <span class="h-7 border-l border-slate-300 mx-1"></span>
                     <button onclick="navigate('teacher')" class="px-4 py-2 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200 ml-2">Regresar</button>
                 </div>
             </div>
@@ -500,8 +590,8 @@
                         <option value="De lo Humano y lo Comunitario">De lo Humano y lo Comunitario</option>
                     </select>
                     <div class="h-8 border-l border-slate-300 mx-1 hidden md:block"></div>
-                    <button onclick="exportConcentradoPDF()" class="px-3 py-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-sm font-bold hover:bg-rose-100 transition" title="Exportar PDF"><i class="fa-solid fa-file-pdf"></i></button>
-                    <button onclick="exportConcentradoExcel()" class="px-3 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm font-bold hover:bg-emerald-100 transition" title="Exportar Excel"><i class="fa-solid fa-file-excel"></i></button>
+                    <button onclick="exportConcentradoPDF()" aria-label="Exportar concentrado en PDF" class="px-3 py-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-sm font-bold hover:bg-rose-100 transition" title="Exportar concentrado en PDF"><i class="fa-solid fa-file-pdf mr-1"></i> PDF</button>
+                    <button onclick="exportConcentradoExcel()" aria-label="Exportar concentrado en Excel" class="px-3 py-2.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-sm font-bold hover:bg-emerald-100 transition" title="Exportar concentrado en Excel"><i class="fa-solid fa-file-excel mr-1"></i> Excel</button>
                     <button onclick="openIndividualReports()" class="px-4 py-2.5 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg text-sm font-bold hover:bg-indigo-100 transition"><i class="fa-solid fa-user-graduate mr-1"></i> Reportes Individuales</button>
                     <button onclick="navigate('teacher')" class="px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200">Volver al Panel Docente</button>
                 </div>
@@ -575,7 +665,7 @@
                     <div class="flex flex-wrap gap-2 items-center">
                         <select id="avance-student-select" class="px-3 py-2.5 border border-slate-300 rounded-xl bg-slate-50 text-sm font-semibold outline-none focus:border-violet-500"></select>
                         <button onclick="exportAvanceTablePDF()" class="px-4 py-2.5 bg-violet-50 text-violet-700 border border-violet-200 rounded-xl text-sm font-bold hover:bg-violet-100 transition"><i class="fa-solid fa-table mr-1"></i> Tabla PDF</button>
-                        <button onclick="exportAvanceSelectedReportPDF()" class="px-4 py-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-bold hover:bg-rose-100 transition"><i class="fa-solid fa-file-pdf mr-1"></i> Generar Reporte PDF</button>
+                        <button onclick="exportEvalDashSelectedReportPDF()" class="px-4 py-2.5 bg-rose-50 text-rose-700 border border-rose-200 rounded-xl text-sm font-bold hover:bg-rose-100 transition"><i class="fa-solid fa-file-pdf mr-1"></i> Generar Reporte PDF</button>
                         <button onclick="navigate('eval-dash')" class="px-4 py-2.5 bg-slate-100 rounded-xl text-sm font-bold text-slate-700 hover:bg-slate-200 transition border border-slate-200"><i class="fa-solid fa-arrow-left mr-1"></i> Regresar</button>
                     </div>
                 </div>
@@ -1160,7 +1250,7 @@
     <script>
         // --- CONSTANTES ---
         const CAMPOS_FORMATIVOS = ["Lenguajes", "Saberes y Pensamiento Científico", "Ética, Naturaleza y Sociedades", "De lo Humano y lo Comunitario"];
-        const APP_VERSION = 'v17.1';
+        const APP_VERSION = 'v17.2';
 
         // --- BASE DE DATOS Y ESTADO ---
         let db = {
@@ -1541,6 +1631,34 @@
             }
 
             performNavigate(viewId);
+        }
+
+        function openReportsAdvance() {
+            const openAdvance = () => {
+                performNavigate('eval-dash');
+                openEvalDashAvance();
+            };
+
+            if (projectDirty) {
+                confirmProjectExit(openAdvance);
+                return;
+            }
+
+            openAdvance();
+        }
+
+        function openReportsEvaluation() {
+            const openEvaluation = () => {
+                session.evalDashPanel = 'period';
+                performNavigate('eval-dash');
+            };
+
+            if (projectDirty) {
+                confirmProjectExit(openEvaluation);
+                return;
+            }
+
+            openEvaluation();
         }
 
         function performNavigate(viewId) {
